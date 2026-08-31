@@ -1,0 +1,7 @@
+dash>=2.15.0
+pandas
+plotly
+psycopg2-binary
+sqlalchemy
+requests
+gunicorn

@@ -1,0 +1,25 @@
+# Cache e dados temporários
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+
+# Variáveis de ambiente (senhas!)
+.env
+.env.*
+
+# Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
