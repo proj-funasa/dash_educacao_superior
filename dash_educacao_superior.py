@@ -17,10 +17,12 @@ import psycopg2
 import requests
 from sqlalchemy import create_engine
 
-# ── Shared layout MIV BigData FUNASA ─────────────────────────────────────────
+# ── Loading component ─────────────────────────────────────────────────────────
+from loading_components import educ_page_loading
+
+# ── Shared layout MIV BigData FUNASA (opcional) ───────────────────────────────
 try:
     from shared_layout import wrap_layout, miv_style_tag
-    from loading_components import funasa_page_loading
     _HAS_MIV = True
 except ImportError:
     _HAS_MIV = False
@@ -66,15 +68,43 @@ COLS_IES = [
     "qt_tec_total",
 ]
 
+import time as _time
+
+# Descobrir o ano mais recente disponível
 with engine.connect() as con:
-    df_cursos = pd.read_sql(
-        f"SELECT {', '.join(COLS_CURSOS)} FROM public.inep_educacao_superior_cursos;",
+    _ano = pd.read_sql("SELECT MAX(nu_ano_censo) as ano FROM public.inep_educacao_superior_cursos", con)
+    ANO_CENSO = int(_ano["ano"].iloc[0])
+    print(f"[EDUC] Ano mais recente: {ANO_CENSO}", flush=True)
+
+# Carregar cursos com progresso (chunked)
+print(f"[EDUC] Carregando cursos de {ANO_CENSO}...", flush=True)
+_t0 = _time.time()
+_chunks_cursos = []
+with engine.connect() as con:
+    for _chunk in pd.read_sql(
+        f"SELECT {', '.join(COLS_CURSOS)} FROM public.inep_educacao_superior_cursos WHERE nu_ano_censo = '{ANO_CENSO}'",
         con,
-    )
-    df_ies = pd.read_sql(
-        f"SELECT {', '.join(COLS_IES)} FROM public.inep_educacao_superior_ies;",
+        chunksize=10000,
+    ):
+        _chunks_cursos.append(_chunk)
+        print(f"  [EDUC] Cursos: {sum(len(c) for c in _chunks_cursos)} linhas...", flush=True)
+df_cursos = pd.concat(_chunks_cursos, ignore_index=True)
+print(f"[EDUC] Cursos carregados: {len(df_cursos)} linhas em {_time.time()-_t0:.0f}s", flush=True)
+
+# Carregar IES com progresso
+print(f"[EDUC] Carregando IES de {ANO_CENSO}...", flush=True)
+_t0 = _time.time()
+_chunks_ies = []
+with engine.connect() as con:
+    for _chunk in pd.read_sql(
+        f"SELECT {', '.join(COLS_IES)} FROM public.inep_educacao_superior_ies WHERE nu_ano_censo = '{ANO_CENSO}'",
         con,
-    )
+        chunksize=10000,
+    ):
+        _chunks_ies.append(_chunk)
+        print(f"  [EDUC] IES: {sum(len(c) for c in _chunks_ies)} linhas...", flush=True)
+df_ies = pd.concat(_chunks_ies, ignore_index=True)
+print(f"[EDUC] IES carregadas: {len(df_ies)} linhas em {_time.time()-_t0:.0f}s", flush=True)
 
 print(f"[EDUC] Cursos: {len(df_cursos)} linhas | IES: {len(df_ies)} linhas", flush=True)
 
@@ -140,11 +170,17 @@ AREAS_GERAL   = ["Todas"] + sorted(df_cursos["no_cine_area_geral"].dropna().uniq
 # ── Cores ─────────────────────────────────────────────────────────────────────
 COR_HEADER  = "#1B3A5C"
 COR_FUNDO   = "#F0F2F5"
-COR_AZUL    = "#1565C0"
+COR_AZUL    = "#2B6CB0"
 COR_VERDE   = "#2F855A"
 COR_ROXO    = "#6B46C1"
 COR_LARANJA = "#C05621"
-COR_CINZA   = "#4A5568"
+COR_CINZA   = "#5A6B7A"
+# Aliases para manter compatibilidade com padrão dash_pib
+COR_CARD_1 = "#2B6CB0"
+COR_CARD_2 = "#2F855A"
+COR_CARD_3 = "#6B46C1"
+COR_CARD_4 = "#5A6B7A"
+COR_CARD_5 = "#C05621"
 
 COR_REGIOES = {
     "Norte":        "#1D9E75",
@@ -170,14 +206,14 @@ def _layout_base():
 def _kpi(valor, label, cor):
     return html.Div(
         [
-            html.P(valor, style={"fontSize": 26, "fontWeight": 700, "color": "#fff",
-                                  "margin": "0 0 4px 0"}),
-            html.P(label, style={"fontSize": 10, "fontWeight": 600, "color": "#fff",
+            html.P(valor, style={"fontSize": 28, "fontWeight": 700, "color": "#fff",
+                                  "margin": "0 0 4px 0", "whiteSpace": "nowrap"}),
+            html.P(label, style={"fontSize": 11, "fontWeight": 600, "color": "#fff",
                                   "margin": 0, "textTransform": "uppercase",
-                                  "letterSpacing": "0.05em"}),
+                                  "letterSpacing": "0.05em", "whiteSpace": "nowrap"}),
         ],
-        style={"backgroundColor": cor, "borderRadius": 8,
-               "padding": "16px 20px", "flex": 1, "minWidth": 140},
+        style={"backgroundColor": cor, "borderRadius": 8, "padding": "18px 22px",
+               "flex": 1, "minWidth": 160},
     )
 
 
@@ -209,15 +245,9 @@ def _nota(texto, cor="#718096"):
 
 
 def _fmt_mil(val):
-    """Formata número: mil / M / B."""
-    v = float(val)
-    if v >= 1_000_000_000:
-        return f"{v/1_000_000_000:.2f} bi"
-    if v >= 1_000_000:
-        return f"{v/1_000_000:.1f} M"
-    if v >= 1_000:
-        return f"{v/1_000:.0f} mil"
-    return f"{v:,.0f}".replace(",", ".")
+    """Formata número inteiro com ponto como separador de milhar."""
+    v = int(float(val))
+    return f"{v:,}".replace(",", ".")
 
 
 def _filtro_label(label, dropdown_id, options, value, width=180):
@@ -375,11 +405,11 @@ def _aba_panorama():
     return html.Div([
         # KPIs
         html.Div([
-            _kpi(_fmt_mil(total_ies),    "Instituições (IES)",  COR_AZUL),
-            _kpi(_fmt_mil(total_cursos), "Cursos Ativos",       COR_VERDE),
-            _kpi(_fmt_mil(total_mat),    "Matrículas",          COR_ROXO),
-            _kpi(_fmt_mil(total_ing),    "Ingressantes",        COR_LARANJA),
-            _kpi(_fmt_mil(total_conc),   "Concluintes",         COR_CINZA),
+            _kpi(_fmt_mil(total_ies),    "Instituições (IES)",  COR_CARD_1),
+            _kpi(_fmt_mil(total_cursos), "Cursos Ativos",       COR_CARD_2),
+            _kpi(_fmt_mil(total_mat),    "Matrículas",          COR_CARD_3),
+            _kpi(_fmt_mil(total_ing),    "Ingressantes",        COR_CARD_5),
+            _kpi(_fmt_mil(total_conc),   "Concluintes",         COR_CARD_4),
         ], className="edu-kpis-row",
            style={"display": "flex", "gap": 12, "marginBottom": 20, "flexWrap": "wrap"}),
 
@@ -598,7 +628,7 @@ if _HAS_MIV:
         funasa_page_loading(wrap_layout(_original_layout, active_path="/educacao-superior/")),
     ])
 else:
-    app.layout = _original_layout
+    app.layout = educ_page_loading(_original_layout)
 
 # ── CSS das abas ──────────────────────────────────────────────────────────────
 app.index_string = app.index_string.replace(
@@ -698,11 +728,11 @@ def atualizar_cursos(regiao, uf, modal, grau, rede):
     n_vg     = int(df["qt_vg_total"].sum())
 
     kpis = html.Div([
-        _kpi(_fmt_mil(n_cursos), "Cursos",       COR_AZUL),
-        _kpi(_fmt_mil(n_mat),    "Matrículas",   COR_VERDE),
-        _kpi(_fmt_mil(n_ing),    "Ingressantes", COR_ROXO),
-        _kpi(_fmt_mil(n_conc),   "Concluintes",  COR_LARANJA),
-        _kpi(_fmt_mil(n_vg),     "Vagas Totais", COR_CINZA),
+        _kpi(_fmt_mil(n_cursos), "Cursos",       COR_CARD_1),
+        _kpi(_fmt_mil(n_mat),    "Matrículas",   COR_CARD_2),
+        _kpi(_fmt_mil(n_ing),    "Ingressantes", COR_CARD_3),
+        _kpi(_fmt_mil(n_conc),   "Concluintes",  COR_CARD_5),
+        _kpi(_fmt_mil(n_vg),     "Vagas Totais", COR_CARD_4),
     ], style={"display": "flex", "gap": 12, "flexWrap": "wrap"})
 
     # Gráfico: Área do conhecimento × Matrículas
@@ -902,7 +932,7 @@ def atualizar_mapa(indicador, modal, rede, grau):
         hoverlabel=dict(
             bgcolor="#ffffff",
             bordercolor="#DEE2E6",
-            font=dict(family="Inter, sans-serif", size=12),
+            font=dict(family="Inter, sans-serif", size=12, color="#000000"),
         ),
     )
 
@@ -930,7 +960,7 @@ def atualizar_mapa(indicador, modal, rede, grau):
         font=dict(family="Inter, sans-serif", size=12),
         xaxis=dict(showgrid=True, gridcolor="#f0f0f0", title=indicador),
         yaxis=dict(showgrid=False, linecolor="#e0e0e0"),
-        hoverlabel=dict(bgcolor="#fff", bordercolor="#ccc", font_size=12),
+        hoverlabel=dict(bgcolor="#fff", bordercolor="#ccc", font_size=12, font_color="#000"),
     )
 
     mapa_e_barras = html.Div([

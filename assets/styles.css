@@ -1,0 +1,95 @@
+/* ── Dashboard Educação Superior — Estilos responsivos ─────────────────────── */
+
+@media screen and (max-width: 768px) {
+
+    /* HEADER */
+    #edu-header {
+        padding: 12px 16px !important;
+        gap: 8px;
+    }
+    #edu-header-titulo h1 { font-size: 14px !important; }
+    #edu-header-titulo p  { font-size: 9px !important;  }
+
+    /* TABS */
+    #edu-tabs-container { padding: 8px 10px 0 10px !important; }
+    .tab { padding: 8px 8px !important; font-size: 11px !important; }
+
+    /* CONTEÚDO */
+    #edu-conteudo { padding: 12px 10px !important; }
+
+    /* KPIs */
+    .edu-kpis-row {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr 1fr !important;
+        gap: 6px !important;
+        margin-bottom: 12px !important;
+    }
+    .edu-kpis-row > div {
+        padding: 10px 8px !important;
+        min-width: unset !important;
+        flex: unset !important;
+    }
+    .edu-kpis-row > div p:first-child { font-size: 14px !important; }
+    .edu-kpis-row > div p:last-child  { font-size: 7px  !important; }
+
+    /* GRÁFICOS lado a lado → empilhar */
+    #edu-conteudo > div > div[style*="display: flex"] {
+        flex-direction: column !important;
+    }
+
+    /* FILTROS */
+    #edu-conteudo .dash-dropdown {
+        width: 100% !important;
+        min-width: unset !important;
+    }
+
+    /* TABELAS */
+    #edu-conteudo table  { font-size: 11px !important; }
+    #edu-conteudo table th { font-size: 9px  !important; padding: 6px 6px !important; }
+    #edu-conteudo table td { font-size: 11px !important; padding: 5px 6px !important; }
+}
+
+@media screen and (max-width: 480px) {
+    .edu-kpis-row { grid-template-columns: 1fr 1fr !important; }
+}
+
+@media screen and (max-width: 360px) {
+    .edu-kpis-row { grid-template-columns: 1fr !important; }
+}
+
+/* ── Loading overlay ────────────────────────────────────────────────────────── */
+
+.educ-loading-wrapper {
+    min-height: 100vh;
+}
+
+.educ-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 40px;
+}
+
+.educ-spinner__ring {
+    width: 56px;
+    height: 56px;
+    border: 5px solid #E2E8F0;
+    border-top-color: #1565C0;
+    border-radius: 50%;
+    animation: educ-spin 0.8s linear infinite;
+}
+
+@keyframes educ-spin {
+    to { transform: rotate(360deg); }
+}
+
+.educ-spinner__label {
+    font-family: Inter, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: #4A5568;
+    margin: 0;
+    letter-spacing: 0.04em;
+}
