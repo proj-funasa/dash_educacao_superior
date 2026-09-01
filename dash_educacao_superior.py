@@ -13,9 +13,8 @@ import dash
 from dash import Input, Output, dcc, html
 import pandas as pd
 import plotly.graph_objects as go
-import psycopg2
 import requests
-from sqlalchemy import create_engine
+import trino
 
 # ── Loading component ─────────────────────────────────────────────────────────
 from loading_components import educ_page_loading
@@ -27,19 +26,33 @@ try:
 except ImportError:
     _HAS_MIV = False
 
-# ── Conexão PostgreSQL ────────────────────────────────────────────────────────
-DB_HOST     = os.getenv("DB_HOST",     "localhost")
-DB_PORT     = os.getenv("DB_PORT",     "5432")
-DB_NAME     = os.getenv("DB_NAME",     "iesb")
-DB_USER     = os.getenv("DB_USER",     "iesb")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+# ── Conexão Trino ─────────────────────────────────────────────────────────────
+TRINO_HOST     = os.getenv("TRINO_HOST",     "trino.dataiesb.com")
+TRINO_PORT     = int(os.getenv("TRINO_PORT", "443"))
+TRINO_USER     = os.getenv("TRINO_USER",     "admin")
+TRINO_PASSWORD = os.getenv("TRINO_PASSWORD", "JGtHJlSQV5TqDh8jJJ1U0u6WyaSUxeLW")
+TRINO_CATALOG  = "seaweedfs"
+TRINO_SCHEMA   = "raw"
 
-def _get_engine():
-    url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    return create_engine(url)
+def _trino_query(sql: str) -> pd.DataFrame:
+    """Executa uma query no Trino e retorna um DataFrame."""
+    conn = trino.dbapi.connect(
+        host=TRINO_HOST,
+        port=TRINO_PORT,
+        user=TRINO_USER,
+        http_scheme="https",
+        auth=trino.auth.BasicAuthentication(TRINO_USER, TRINO_PASSWORD),
+        catalog=TRINO_CATALOG,
+        schema=TRINO_SCHEMA,
+    )
+    cur = conn.cursor()
+    cur.execute(sql)
+    cols = [d[0] for d in cur.description]
+    rows = cur.fetchall()
+    conn.close()
+    return pd.DataFrame(rows, columns=cols)
 
 print("[EDUC] Carregando tabela de cursos...", flush=True)
-engine = _get_engine()
 
 COLS_CURSOS = [
     "nu_ano_censo", "no_regiao", "co_regiao", "no_uf", "sg_uf", "co_uf",
@@ -70,40 +83,26 @@ COLS_IES = [
 
 import time as _time
 
-# Descobrir o ano mais recente disponível
-with engine.connect() as con:
-    _ano = pd.read_sql("SELECT MAX(nu_ano_censo) as ano FROM public.inep_educacao_superior_cursos", con)
-    ANO_CENSO = int(_ano["ano"].iloc[0])
-    print(f"[EDUC] Ano mais recente: {ANO_CENSO}", flush=True)
+# Descobrir todos os anos disponíveis
+_anos_df = _trino_query("SELECT DISTINCT nu_ano_censo FROM seaweedfs.raw.inep_educacao_superior_cursos ORDER BY nu_ano_censo")
+ANOS_DISPONIVEIS = sorted(_anos_df["nu_ano_censo"].astype(int).tolist())
+ANO_CENSO = ANOS_DISPONIVEIS[-1]  # mais recente, usado como padrão nos KPIs
+print(f"[EDUC] Anos disponíveis: {ANOS_DISPONIVEIS} | Padrão: {ANO_CENSO}", flush=True)
 
-# Carregar cursos com progresso (chunked)
-print(f"[EDUC] Carregando cursos de {ANO_CENSO}...", flush=True)
+# Carregar todos os anos de cursos
+print(f"[EDUC] Carregando cursos (todos os anos)...", flush=True)
 _t0 = _time.time()
-_chunks_cursos = []
-with engine.connect() as con:
-    for _chunk in pd.read_sql(
-        f"SELECT {', '.join(COLS_CURSOS)} FROM public.inep_educacao_superior_cursos WHERE nu_ano_censo = '{ANO_CENSO}'",
-        con,
-        chunksize=10000,
-    ):
-        _chunks_cursos.append(_chunk)
-        print(f"  [EDUC] Cursos: {sum(len(c) for c in _chunks_cursos)} linhas...", flush=True)
-df_cursos = pd.concat(_chunks_cursos, ignore_index=True)
+df_cursos = _trino_query(
+    f"SELECT {', '.join(COLS_CURSOS)} FROM seaweedfs.raw.inep_educacao_superior_cursos"
+)
 print(f"[EDUC] Cursos carregados: {len(df_cursos)} linhas em {_time.time()-_t0:.0f}s", flush=True)
 
-# Carregar IES com progresso
-print(f"[EDUC] Carregando IES de {ANO_CENSO}...", flush=True)
+# Carregar todos os anos de IES
+print(f"[EDUC] Carregando IES (todos os anos)...", flush=True)
 _t0 = _time.time()
-_chunks_ies = []
-with engine.connect() as con:
-    for _chunk in pd.read_sql(
-        f"SELECT {', '.join(COLS_IES)} FROM public.inep_educacao_superior_ies WHERE nu_ano_censo = '{ANO_CENSO}'",
-        con,
-        chunksize=10000,
-    ):
-        _chunks_ies.append(_chunk)
-        print(f"  [EDUC] IES: {sum(len(c) for c in _chunks_ies)} linhas...", flush=True)
-df_ies = pd.concat(_chunks_ies, ignore_index=True)
+df_ies = _trino_query(
+    f"SELECT {', '.join(COLS_IES)} FROM seaweedfs.raw.inep_educacao_superior_ies"
+)
 print(f"[EDUC] IES carregadas: {len(df_ies)} linhas em {_time.time()-_t0:.0f}s", flush=True)
 
 print(f"[EDUC] Cursos: {len(df_cursos)} linhas | IES: {len(df_ies)} linhas", flush=True)
@@ -300,8 +299,11 @@ def _tabela_html(df_tab, cor_col=None, cor_fn=None, max_rows=50):
 
 
 # ── Filtro helper ──────────────────────────────────────────────────────────────
-def _aplicar_filtros_cursos(regiao, uf, modalidade, grau, rede):
+def _aplicar_filtros_cursos(regiao, uf, modalidade, grau, rede, ano=None):
     df = df_cursos.copy()
+    # Filtro de ano — padrão: ano mais recente
+    _ano = int(ano) if ano else ANO_CENSO
+    df = df[df["nu_ano_censo"].astype(int) == _ano]
     if regiao and regiao != "Todas":
         df = df[df["no_regiao"] == regiao]
     if uf and uf != "Todas":
@@ -315,8 +317,11 @@ def _aplicar_filtros_cursos(regiao, uf, modalidade, grau, rede):
     return df
 
 
-def _aplicar_filtros_ies(regiao, uf, org, rede):
+def _aplicar_filtros_ies(regiao, uf, org, rede, ano=None):
     df = df_ies.copy()
+    # Filtro de ano — padrão: ano mais recente
+    _ano = int(ano) if ano else ANO_CENSO
+    df = df[df["nu_ano_censo"].astype(int) == _ano]
     if regiao and regiao != "Todas":
         df = df[df["no_regiao_ies"] == regiao]
     if uf and uf != "Todas":
@@ -453,6 +458,7 @@ def _aba_cursos_layout():
             html.Div([
                 _titulo("Filtros"),
                 html.Div([
+                    _filtro_label("Ano",       "f-ano",       sorted(ANOS_DISPONIVEIS, reverse=True), ANO_CENSO, 100),
                     _filtro_label("Região",    "f-regiao",    REGIOES,     "Todas", 170),
                     _filtro_label("UF",        "f-uf",        UFS,         "Todas", 130),
                     _filtro_label("Modalidade","f-modal",     MODALIDADES, "Todas", 190),
@@ -519,6 +525,7 @@ def _aba_mapa_layout():
                                   ["Matrículas", "Ingressantes", "Concluintes",
                                    "Cursos", "IES", "Docentes (IES)"],
                                   "Matrículas", 210),
+                    _filtro_label("Ano",        "mapa-ano",       sorted(ANOS_DISPONIVEIS, reverse=True), ANO_CENSO, 100),
                     _filtro_label("Modalidade", "mapa-modal",     MODALIDADES, "Todas", 190),
                     _filtro_label("Rede",        "mapa-rede",      REDES,       "Todas", 140),
                     _filtro_label("Grau",        "mapa-grau",      GRAUS,       "Todos", 180),
@@ -712,14 +719,15 @@ def filtrar_uf_por_regiao(regiao):
     Output("graf-grau-ing",  "children"),
     Output("graf-genero",    "children"),
     Output("graf-financ",    "children"),
+    Input("f-ano",     "value"),
     Input("f-regiao",  "value"),
     Input("f-uf",      "value"),
     Input("f-modal",   "value"),
     Input("f-grau",    "value"),
     Input("f-rede",    "value"),
 )
-def atualizar_cursos(regiao, uf, modal, grau, rede):
-    df = _aplicar_filtros_cursos(regiao, uf, modal, grau, rede)
+def atualizar_cursos(ano, regiao, uf, modal, grau, rede):
+    df = _aplicar_filtros_cursos(regiao, uf, modal, grau, rede, ano)
 
     n_cursos = int(df["co_curso"].nunique())
     n_mat    = int(df["qt_mat"].sum())
@@ -811,6 +819,7 @@ def atualizar_cursos(regiao, uf, modal, grau, rede):
 # ── Tabela top cursos ─────────────────────────────────────────────────────────
 @app.callback(
     Output("tabela-top-cursos", "children"),
+    Input("f-ano",       "value"),
     Input("f-regiao",    "value"),
     Input("f-uf",        "value"),
     Input("f-modal",     "value"),
@@ -818,8 +827,8 @@ def atualizar_cursos(regiao, uf, modal, grau, rede):
     Input("f-rede",      "value"),
     Input("f-area-tab",  "value"),
 )
-def tabela_top_cursos(regiao, uf, modal, grau, rede, area):
-    df = _aplicar_filtros_cursos(regiao, uf, modal, grau, rede)
+def tabela_top_cursos(ano, regiao, uf, modal, grau, rede, area):
+    df = _aplicar_filtros_cursos(regiao, uf, modal, grau, rede, ano)
     if area and area != "Todas":
         df = df[df["no_cine_area_geral"] == area]
 
@@ -861,15 +870,16 @@ def tabela_top_cursos(regiao, uf, modal, grau, rede, area):
     Output("mapa-uf-container",  "children"),
     Output("tabela-ranking-uf",  "children"),
     Input("mapa-indicador", "value"),
+    Input("mapa-ano",       "value"),
     Input("mapa-modal",     "value"),
     Input("mapa-rede",      "value"),
     Input("mapa-grau",      "value"),
 )
-def atualizar_mapa(indicador, modal, rede, grau):
+def atualizar_mapa(indicador, ano, modal, rede, grau):
     # Seleção da fonte de dados e campo
     if indicador in ["IES", "Docentes (IES)"]:
         df_m = _aplicar_filtros_ies("Todas", "Todas",
-                                    "Todas", rede if rede != "Todas" else "Todas")
+                                    "Todas", rede if rede != "Todas" else "Todas", ano)
         if indicador == "IES":
             agg = df_m.groupby("sg_uf_ies")["co_ies"].nunique().reset_index()
             agg.columns = ["sg_uf", "valor"]
@@ -877,7 +887,7 @@ def atualizar_mapa(indicador, modal, rede, grau):
             agg = df_m.groupby("sg_uf_ies")["qt_doc_total"].sum().reset_index()
             agg.columns = ["sg_uf", "valor"]
     else:
-        df_m = _aplicar_filtros_cursos("Todas", "Todas", modal, grau, rede)
+        df_m = _aplicar_filtros_cursos("Todas", "Todas", modal, grau, rede, ano)
         campo = {"Matrículas": "qt_mat", "Ingressantes": "qt_ing",
                  "Concluintes": "qt_conc", "Cursos": "qt_curso"}.get(indicador, "qt_mat")
         agg = df_m.groupby("sg_uf")[campo].sum().reset_index()
