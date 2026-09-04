@@ -1,4 +1,7 @@
-FROM python:3.11-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -8,11 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV DASH_PREFIX=/educacao-superior/
-ENV DB_HOST=bigdata.dataiesb.com
-ENV DB_PORT=5432
-ENV DB_NAME=iesb
-ENV DB_USER=iesb
 
-EXPOSE 8051
+EXPOSE 8050
 
-CMD ["gunicorn", "app:server", "--bind", "0.0.0.0:8051", "--workers", "2", "--timeout", "120"]
+HEALTHCHECK CMD curl --fail http://localhost:8050/educacao-superior/ || exit 1
+
+CMD ["gunicorn", "app:server", "-b", "0.0.0.0:8050", "-w", "2", "--threads", "4", "--timeout", "120"]

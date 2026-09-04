@@ -1,0 +1,370 @@
+/* ═══ MIV Shell — BigData FUNASA (Redesign Jul/2026) ═══ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@400,0..1&display=swap');
+
+.material-symbols-outlined{font-family:'Material Symbols Outlined'!important;font-size:20px;line-height:1;font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24}
+
+.miv-shell{display:flex;flex-direction:column;min-height:100vh;height:100vh;background:#F5F7FA;font-family:Inter,"Segoe UI",Roboto,Arial,sans-serif}
+.miv-shell *{font-family:inherit}
+.miv-body{display:flex;flex:1;min-height:calc(100vh - 64px)}
+
+/* ═══ MIV Header ═══ */
+.miv-header{
+  background:#fff;
+  height:64px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 1.5rem;
+  border-bottom:1px solid #E4E7EC;
+  position:sticky;
+  top:0;
+  z-index:1050;
+  flex-shrink:0;
+}
+.miv-header__brand{
+  text-decoration:none;
+  color:#084B86;
+  font-size:1.05rem;
+  letter-spacing:-.02em;
+  display:flex;
+  align-items:center;
+  gap:.25rem;
+}
+.miv-header__left{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+}
+.miv-header__logo{
+  height:38px;
+  width:auto;
+  object-fit:contain;
+}
+
+/* ═══ Sidebar (Desktop) — Expandível no hover ═══ */
+.miv-sidebar{
+  width:52px;
+  background:linear-gradient(180deg,#084B86 0%,#063d6e 100%);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:1rem 0;
+  gap:0.35rem;
+  position:sticky;
+  top:64px;
+  height:calc(100vh - 64px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  flex-shrink:0;
+  z-index:1000;
+  box-shadow:2px 0 8px rgba(8,75,134,.15);
+  transition:width .25s ease;
+  color:#fff;
+}
+.miv-sidebar:hover{
+  width:260px;
+  align-items:stretch;
+}
+.miv-sidebar__divider{
+  padding:.5rem .5rem .2rem;
+  overflow:hidden;
+}
+.miv-sidebar__section{
+  font-size:.6rem;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  color:rgba(255,255,255,.45);
+  white-space:nowrap;
+  display:none;
+}
+.miv-sidebar:hover .miv-sidebar__section{
+  display:block;
+}
+.miv-sidebar__item{
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:10px;
+  color:rgba(255,255,255,.55);
+  text-decoration:none;
+  font-size:1rem;
+  transition:all .15s ease;
+  position:relative;
+  white-space:nowrap;
+  overflow:hidden;
+  gap:.6rem;
+  padding:0;
+}
+.miv-sidebar:hover .miv-sidebar__item{
+  width:auto;
+  padding:0 .75rem;
+  justify-content:flex-start;
+}
+.miv-sidebar__item:hover{
+  background:rgba(255,255,255,.12);
+  color:rgba(255,255,255,.95);
+}
+.miv-sidebar__item--active{
+  background:rgba(255,255,255,.18);
+  color:#fff;
+  box-shadow:0 2px 8px rgba(0,0,0,.15);
+}
+.miv-sidebar__item--active::before{
+  content:'';
+  position:absolute;
+  left:0;
+  top:50%;
+  transform:translateY(-50%);
+  width:3px;
+  height:20px;
+  background:#fff;
+  border-radius:0 3px 3px 0;
+}
+.miv-sidebar__item .material-symbols-outlined{
+  color:inherit;
+  flex-shrink:0;
+}
+.miv-sidebar__label{
+  display:none;
+  font-size:.75rem;
+  font-weight:500;
+  color:rgba(255,255,255,.85) !important;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.miv-sidebar:hover .miv-sidebar__label{
+  display:inline;
+}
+
+/* ═══ Main Content ═══ */
+.miv-main{flex:1;min-width:0;overflow:visible;background:#F2F5F7}
+
+/* ═══ Bottom Nav (Mobile) ═══ */
+.miv-bnav{
+  position:fixed;
+  bottom:0;left:0;right:0;
+  background:#fff;
+  border-top:1px solid #E4E7EC;
+  display:none;
+  justify-content:space-around;
+  align-items:center;
+  padding:.35rem 0;
+  padding-bottom:env(safe-area-inset-bottom,.35rem);
+  z-index:1100;
+  height:52px;
+  box-shadow:0 -2px 8px rgba(16,24,40,.04);
+}
+.miv-bnav__item{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:1px;
+  font-size:.55rem;
+  font-weight:600;
+  color:#667085;
+  text-decoration:none;
+  padding:2px 6px;
+  border-radius:6px;
+  transition:color .15s;
+}
+.miv-bnav__item span:first-child{
+  font-size:1.1rem;
+  line-height:1;
+}
+.miv-bnav__item--active{
+  color:#0C5EA6;
+}
+.miv-bnav__item--active span:first-child{
+  transform:scale(1.1);
+}
+
+/* ═══ Responsive ═══ */
+@media(max-width:767px){
+  .miv-sidebar{display:none}
+  .miv-bnav{display:flex}
+  .miv-main{padding-bottom:56px}
+  .miv-body{height:calc(100vh - 64px - 52px)}
+  body{padding-bottom:56px!important}
+}
+
+/* ═══ Mobile Sidebar Overlay (:target CSS toggle) ═══ */
+.miv-mobile-sidebar-overlay{
+  position:fixed;
+  inset:0;
+  z-index:2000;
+  display:flex;
+  align-items:stretch;
+  visibility:hidden;
+  opacity:0;
+  transition:visibility 0s .25s, opacity .25s;
+}
+/* When targeted via #miv-mobile-menu, show overlay */
+.miv-mobile-sidebar-overlay:target{
+  visibility:visible;
+  opacity:1;
+  transition:visibility 0s, opacity .2s;
+}
+.miv-mobile-sidebar-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,.5);
+  backdrop-filter:blur(2px);
+  cursor:pointer;
+  text-decoration:none;
+}
+.miv-mobile-sidebar-panel{
+  position:relative;
+  width:280px;
+  max-width:85vw;
+  height:100%;
+  background:#fff;
+  box-shadow:4px 0 24px rgba(0,0,0,.15);
+  display:flex;
+  flex-direction:column;
+  overflow-y:auto;
+  transform:translateX(-100%);
+  transition:transform .25s ease;
+}
+.miv-mobile-sidebar-overlay:target .miv-mobile-sidebar-panel{
+  transform:translateX(0);
+}
+.miv-mobile-sidebar__header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:1.25rem 1rem;
+  border-bottom:1px solid #E4E7EC;
+}
+.miv-mobile-sidebar__logos{
+  display:flex;
+  align-items:center;
+  gap:.5rem;
+}
+.miv-mobile-sidebar__close{
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  border:none;
+  background:#f2f4f7;
+  cursor:pointer;
+  color:#475467;
+  text-decoration:none;
+}
+.miv-mobile-sidebar__close:hover{
+  background:#e4e7ec;
+}
+.miv-mobile-sidebar__nav{
+  flex:1;
+  padding:.75rem .5rem;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.miv-mobile-sidebar__divider{
+  padding:.75rem .75rem .25rem;
+}
+.miv-mobile-sidebar__section{
+  font-size:.6rem;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:#667085;
+}
+.miv-mobile-sidebar__item{
+  display:flex;
+  align-items:center;
+  gap:.75rem;
+  padding:.7rem .75rem;
+  border-radius:10px;
+  text-decoration:none;
+  color:#344054;
+  font-size:.8rem;
+  font-weight:500;
+  transition:background .12s;
+}
+.miv-mobile-sidebar__item:hover{
+  background:#f0f7ff;
+  color:#084B86;
+}
+.miv-mobile-sidebar__item--active{
+  background:#e8f4fd;
+  color:#084B86;
+  font-weight:600;
+}
+.miv-mobile-sidebar__item .material-symbols-outlined{
+  font-size:1.1rem;
+  color:#667085;
+}
+.miv-mobile-sidebar__item--active .material-symbols-outlined{
+  color:#084B86;
+}
+
+/* Hide mobile sidebar on desktop */
+@media(min-width:768px){
+  .miv-mobile-sidebar-overlay{display:none!important}
+}
+
+@media(min-width:768px){
+  .miv-bnav{display:none!important}
+}
+
+/* ═══ Cleanup — esconder nav antigo residual ═══ */
+.bottom-nav{display:none!important}
+
+/* ═══ Header Normalization — Esconder headers BRANCOS dos dashs ═══ */
+/* Esconder apenas headers que são puramente branding (sem funcionalidade) */
+.miv-main .site-header,
+.miv-main header.hero,
+.miv-main #header-container{
+  display:none!important;
+}
+
+/* Qualificacao: header azul escuro → esconder */
+.miv-main > div > header.app-header:not(.topbar-parent){
+  display:none!important;
+}
+
+/* INEP navbar — manter, só esconder logo */
+.miv-main .funasa-logo{
+  display:none!important;
+}
+.funasa-navbar{
+  background:#fff!important;
+  box-shadow:none!important;
+  border-bottom:1px solid #E4E7EC;
+}
+.brand-title{
+  color:#1D2939!important;
+  font-weight:700!important;
+}
+.brand-subtitle{
+  color:#667085!important;
+}
+
+/* Logos individuais em qualquer header — esconder */
+.miv-main .brand-logo,
+.miv-main .header-logo,
+.miv-main .app-logo,
+.miv-main .dashboard-logo-card,
+.miv-main img[alt="Logo FUNASA"],
+.miv-main img[alt="Funasa"],
+.miv-main img[alt="FUNASA"]{
+  display:none!important;
+}
+
+/* Rio-doce: manter header funcional, só esconder a img do logo */
+.miv-main .app-header__logo{
+  display:none!important;
+}
+
+/* Cluster_LISA dashboard-header: esconder (já não tem gradiente) */
+.miv-main .dashboard-header{
+  display:none!important;
+}

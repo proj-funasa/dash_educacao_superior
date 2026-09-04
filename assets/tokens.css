@@ -1,0 +1,78 @@
+/* ═══════════════════════════════════════════════════════
+   TOKENS — BigData FUNASA Design System
+   Ref: MIV.md (Jul/2026)
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: light;
+
+  /* ── Marca ── */
+  --funasa-blue:            #0C5EA6;
+  --funasa-blue-dark:       #084B86;
+  --funasa-blue-soft:       #EAF4FB;
+  --funasa-red:             #982520;
+  --funasa-red-soft:        #F9ECEB;
+
+  /* ── Superfícies ── */
+  --surface:                #FFFFFF;
+  --surface-muted:          #F5F7FA;
+  --surface-alt:            #F7F9FB;
+
+  /* ── Texto ── */
+  --text-primary:           #1D2939;
+  --text-secondary:         #5D6B7A;
+  --text-inverse:           #FFFFFF;
+
+  /* ── Bordas ── */
+  --border:                 #DBE3EA;
+  --border-strong:          #A9B9C5;
+
+  /* ── Status / Semânticas ── */
+  --status-success:         #12B76A;
+  --status-success-soft:    rgba(18, 183, 106, 0.10);
+  --status-warning:         #F79009;
+  --status-warning-soft:    rgba(247, 144, 9, 0.10);
+  --status-danger:          #F04438;
+  --status-danger-soft:     rgba(240, 68, 56, 0.10);
+  --status-info:            #0C5EA6;
+
+  /* ── KPI / Destaques ── */
+  --kpi-green:              #12B76A;
+  --kpi-orange:             #F79009;
+  --kpi-blue:               #0C5EA6;
+
+  /* ── Sombras ── */
+  --shadow-sm:              0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-md:              0 8px 24px rgba(16, 24, 40, 0.08);
+  --shadow-lg:              0 16px 38px rgba(23, 43, 58, 0.12);
+
+  /* ── Espaçamento ── */
+  --space-xs:               0.25rem;
+  --space-sm:               0.5rem;
+  --space-md:               1rem;
+  --space-lg:               1.5rem;
+  --space-xl:               2rem;
+  --space-2xl:              3rem;
+
+  /* ── Raios ── */
+  --radius-sm:              4px;
+  --radius-md:              6px;
+  --radius-lg:              8px;
+  --radius-xl:              12px;
+
+  /* ── Tipografia ── */
+  --font-family:            Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-size-xs:           0.6875rem;  /* 11px */
+  --font-size-sm:           0.75rem;    /* 12px */
+  --font-size-base:         0.875rem;   /* 14px */
+  --font-size-md:           1rem;       /* 16px */
+  --font-size-lg:           1.25rem;    /* 20px */
+  --font-size-xl:           1.75rem;    /* 28px */
+  --font-size-2xl:          2.5rem;     /* 40px */
+
+  /* ── Layout ── */
+  --sidebar-width:          56px;
+  --header-height:          64px;
+  --content-max-width:      1440px;
+  --bottom-nav-height:      60px;
+}

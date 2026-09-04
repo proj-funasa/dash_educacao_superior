@@ -27,24 +27,30 @@ except ImportError:
     _HAS_MIV = False
 
 # ── Conexão Trino ─────────────────────────────────────────────────────────────
-TRINO_HOST     = os.getenv("TRINO_HOST",     "trino.dataiesb.com")
-TRINO_PORT     = int(os.getenv("TRINO_PORT", "443"))
-TRINO_USER     = os.getenv("TRINO_USER",     "admin")
-TRINO_PASSWORD = os.getenv("TRINO_PASSWORD", "JGtHJlSQV5TqDh8jJJ1U0u6WyaSUxeLW")
-TRINO_CATALOG  = "seaweedfs"
-TRINO_SCHEMA   = "raw"
+# Padrão: Trino interno do cluster (HTTP, sem autenticação). Para uso externo
+# (ex.: dev local via trino.dataiesb.com), exportar TRINO_PASSWORD → ativa HTTPS+BasicAuth.
+TRINO_HOST     = os.getenv("TRINO_HOST",     "trino.trino.svc.cluster.local")
+TRINO_PORT     = int(os.getenv("TRINO_PORT", "8080"))
+TRINO_USER     = os.getenv("TRINO_USER",     "funasa_reader")
+TRINO_PASSWORD = os.getenv("TRINO_PASSWORD")  # sem default — nunca hardcodear segredos
+TRINO_CATALOG  = os.getenv("TRINO_CATALOG",   "seaweedfs")
+TRINO_SCHEMA   = os.getenv("TRINO_SCHEMA",    "raw")
 
 def _trino_query(sql: str) -> pd.DataFrame:
     """Executa uma query no Trino e retorna um DataFrame."""
-    conn = trino.dbapi.connect(
+    conn_kwargs = dict(
         host=TRINO_HOST,
         port=TRINO_PORT,
         user=TRINO_USER,
-        http_scheme="https",
-        auth=trino.auth.BasicAuthentication(TRINO_USER, TRINO_PASSWORD),
         catalog=TRINO_CATALOG,
         schema=TRINO_SCHEMA,
     )
+    # Só usa HTTPS + BasicAuth quando uma senha é fornecida via ambiente.
+    if TRINO_PASSWORD:
+        conn_kwargs["http_scheme"] = "https"
+        conn_kwargs["auth"] = trino.auth.BasicAuthentication(TRINO_USER, TRINO_PASSWORD)
+
+    conn = trino.dbapi.connect(**conn_kwargs)
     cur = conn.cursor()
     cur.execute(sql)
     cols = [d[0] for d in cur.description]
@@ -683,7 +689,7 @@ _original_layout = html.Div(
 if _HAS_MIV:
     app.layout = html.Div([
         miv_style_tag(),
-        funasa_page_loading(wrap_layout(_original_layout, active_path="/educacao-superior/")),
+        educ_page_loading(wrap_layout(_original_layout, active_path="/educacao-superior/")),
     ])
 else:
     app.layout = educ_page_loading(_original_layout)

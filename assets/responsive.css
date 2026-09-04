@@ -1,0 +1,204 @@
+/* ═══════════════════════════════════════════════════════
+   RESPONSIVE — BigData FUNASA Design System
+   Ref: MIV.md (Jul/2026)
+   Breakpoints: Mobile < 768 | Tablet 768–1024 | Desktop > 1024
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Tablet (768px – 1024px) ── */
+@media (max-width: 1024px) {
+  .grid--kpi {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid--main {
+    grid-template-columns: 1fr;
+  }
+
+  .grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid--3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .main-content {
+    padding: var(--space-md) var(--space-md);
+  }
+
+  .header-brand__partners {
+    display: none;
+  }
+}
+
+/* ── Mobile (< 768px) ── */
+@media (max-width: 767px) {
+  /* Sidebar desaparece */
+  .sidebar {
+    display: none;
+  }
+
+  /* Bottom nav — handled by miv-bnav in miv.css */
+
+  /* Padding inferior para compensar bottom-nav */
+  .main-content {
+    padding-bottom: calc(var(--bottom-nav-height) + var(--space-lg));
+  }
+
+  /* Header simplificado */
+  .header-brand__partners {
+    display: none;
+  }
+
+  .header-brand__separator {
+    display: none;
+  }
+
+  .header-content {
+    padding: 0 var(--space-md);
+  }
+
+  .app-header {
+    height: 56px;
+  }
+
+  /* Grid adaptações */
+  .grid--kpi {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+  }
+
+  .grid--2,
+  .grid--3,
+  .grid--4 {
+    grid-template-columns: 1fr;
+  }
+
+  .grid--main {
+    grid-template-columns: 1fr;
+  }
+
+  /* KPI reduzido */
+  .kpi-card {
+    padding: 1rem;
+  }
+  .kpi-card__number {
+    font-size: 1.75rem;
+  }
+
+  /* Content card */
+  .content-card {
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+  }
+
+  /* Page title */
+  .page-title {
+    font-size: var(--font-size-lg);
+  }
+
+  /* Trend card empilhado */
+  .trend-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
+  }
+  .trend-card__label {
+    min-width: unset;
+  }
+  .trend-card__value {
+    align-self: flex-end;
+  }
+
+  /* News ticker scroll */
+  .news-ticker {
+    font-size: var(--font-size-sm);
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  /* Map full-width */
+  .map-container {
+    border-radius: var(--radius-lg);
+    margin: 0 calc(-1 * var(--space-md));
+    width: calc(100% + 2 * var(--space-md));
+  }
+
+  /* News cards grid */
+  .grid--news {
+    grid-template-columns: 1fr;
+  }
+
+  /* Table horizontal scroll */
+  .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ── Extra-small (< 480px) ── */
+@media (max-width: 479px) {
+  .grid--kpi {
+    gap: var(--space-sm);
+  }
+
+  .kpi-card__number {
+    font-size: 1.5rem;
+  }
+
+  .kpi-card__label {
+    font-size: var(--font-size-xs);
+  }
+
+  .header-brand__logo {
+    height: 32px;
+  }
+
+  .header-user__name {
+    display: none;
+  }
+}
+
+/* ── Desktop grande (> 1440px) ── */
+@media (min-width: 1441px) {
+  .main-content {
+    padding: var(--space-xl) var(--space-2xl);
+  }
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .news-ticker__content {
+    animation: none !important;
+  }
+}
+
+/* ── Print ── */
+@media print {
+  .sidebar,
+  .bottom-nav,
+  .app-header,
+  .news-ticker {
+    display: none !important;
+  }
+
+  .main-content {
+    padding: 0;
+    max-width: 100%;
+  }
+
+  .content-card,
+  .kpi-card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+    break-inside: avoid;
+  }
+}
