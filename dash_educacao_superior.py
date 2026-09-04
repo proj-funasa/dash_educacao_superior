@@ -36,6 +36,12 @@ TRINO_PASSWORD = os.getenv("TRINO_PASSWORD")  # sem default — nunca hardcodear
 TRINO_CATALOG  = os.getenv("TRINO_CATALOG",   "seaweedfs")
 TRINO_SCHEMA   = os.getenv("TRINO_SCHEMA",    "raw")
 
+# Tabelas de origem (fully-qualified). Padrão: camada gold do data lake
+# (populada pela DAG etl_educacao_superior / etl/*.sql). Sobrescreva via env
+# para ler outra camada, ex.: TBL_CURSOS=seaweedfs.raw.inep_educacao_superior_cursos.
+TBL_CURSOS = os.getenv("TBL_CURSOS", "gold.gold.educacao_superior_cursos")
+TBL_IES    = os.getenv("TBL_IES",    "gold.gold.educacao_superior_ies")
+
 def _trino_query(sql: str) -> pd.DataFrame:
     """Executa uma query no Trino e retorna um DataFrame."""
     conn_kwargs = dict(
@@ -90,7 +96,7 @@ COLS_IES = [
 import time as _time
 
 # Descobrir todos os anos disponíveis
-_anos_df = _trino_query("SELECT DISTINCT nu_ano_censo FROM seaweedfs.raw.inep_educacao_superior_cursos ORDER BY nu_ano_censo")
+_anos_df = _trino_query(f"SELECT DISTINCT nu_ano_censo FROM {TBL_CURSOS} ORDER BY nu_ano_censo")
 ANOS_DISPONIVEIS = sorted(_anos_df["nu_ano_censo"].astype(int).tolist())
 ANO_CENSO = ANOS_DISPONIVEIS[-1]  # mais recente, usado como padrão nos KPIs
 print(f"[EDUC] Anos disponíveis: {ANOS_DISPONIVEIS} | Padrão: {ANO_CENSO}", flush=True)
@@ -99,7 +105,7 @@ print(f"[EDUC] Anos disponíveis: {ANOS_DISPONIVEIS} | Padrão: {ANO_CENSO}", fl
 print(f"[EDUC] Carregando cursos (todos os anos)...", flush=True)
 _t0 = _time.time()
 df_cursos = _trino_query(
-    f"SELECT {', '.join(COLS_CURSOS)} FROM seaweedfs.raw.inep_educacao_superior_cursos"
+    f"SELECT {', '.join(COLS_CURSOS)} FROM {TBL_CURSOS}"
 )
 print(f"[EDUC] Cursos carregados: {len(df_cursos)} linhas em {_time.time()-_t0:.0f}s", flush=True)
 
@@ -107,7 +113,7 @@ print(f"[EDUC] Cursos carregados: {len(df_cursos)} linhas em {_time.time()-_t0:.
 print(f"[EDUC] Carregando IES (todos os anos)...", flush=True)
 _t0 = _time.time()
 df_ies = _trino_query(
-    f"SELECT {', '.join(COLS_IES)} FROM seaweedfs.raw.inep_educacao_superior_ies"
+    f"SELECT {', '.join(COLS_IES)} FROM {TBL_IES}"
 )
 print(f"[EDUC] IES carregadas: {len(df_ies)} linhas em {_time.time()-_t0:.0f}s", flush=True)
 
