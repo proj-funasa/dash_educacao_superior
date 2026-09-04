@@ -16,4 +16,4 @@ EXPOSE 8050
 
 HEALTHCHECK CMD curl --fail http://localhost:8050/educacao-superior/ || exit 1
 
-CMD ["gunicorn", "app:server", "-b", "0.0.0.0:8050", "-w", "2", "--threads", "4", "--timeout", "120"]
+CMD ["gunicorn", "app:server", "-b", "0.0.0.0:8050", "-w", "1", "--threads", "4", "--timeout", "120"]
