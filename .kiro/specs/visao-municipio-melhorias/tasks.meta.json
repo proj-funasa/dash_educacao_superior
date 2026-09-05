@@ -1,0 +1,549 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Definir constantes e helpers de decodificação": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385334
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561394278
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561772055
+      }
+    ],
+    "2.1 Implementar a função `_carregar_coordenadas_municipios()` que baixa o CSV de geocódigos IBGE (kelvins/municipios-brasileiros), faz cache em `.cache/municipios_coords.csv` e retorna um DataFrame com colunas `codigo_ibge`, `latitude`, `longitude`, `nome`, `uf`": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385423
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561395107
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561773700
+      }
+    ],
+    "3.1 Tornar o `dcc.Dropdown` de município `clearable=True` e remover `clearable=False` existente": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385522
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561395785
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561774459
+      }
+    ],
+    "3.2 Adicionar `dcc.Store(id=\"mun-sort-state\", data={\"col\": \"total_mat\", \"asc\": False})` ao layout da aba": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385577
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561396534
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561775339
+      }
+    ],
+    "3.3 Adicionar os dropdowns de \"Categoria Administrativa\" (`id=\"mun-categoria\"`, opções `CATEGORIAS_ADM`, valor `\"Todas\"`) e \"Modalidade\" (`id=\"mun-modalidade\"`, opções `[\"Todas\", \"Presencial\", \"EAD\"]`, valor `\"Todas\"`) à barra de filtros existente, usando `_filtro_label()`": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385615
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561397657
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561776703
+      }
+    ],
+    "3.4 Adicionar `dcc.Tabs(id=\"mun-sub-abas\", value=\"sub-tabela\")` com dois `dcc.Tab` — `\"Tabela de IES\"` (`value=\"sub-tabela\"`) e `\"Mapa por Município\"` (`value=\"sub-mapa\"`) — logo antes dos containers de saída existentes": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385672
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561402015
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561779033
+      }
+    ],
+    "4.1 Refatorar `renderizar_tabela_faculdades()` para aceitar o novo input `State(\"mun-sort-state\", \"data\")` e aplicar `.sort_values()` com base em `sort_state[\"col\"]` e `sort_state[\"asc\"]` antes de construir as linhas HTML": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385702
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561783702
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562226254
+      }
+    ],
+    "4.2 Adicionar `id={\"type\": \"th-sort-ies\", \"col\": <nome_col>}` e cursor `pointer` aos cabeçalhos das colunas ordenáveis (Matrículas, Ingressantes, Concluintes, Cursos Únicos)": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385736
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561784622
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562224874
+      }
+    ],
+    "4.3 Criar callback `atualizar_sort_state()` com `Input({\"type\": \"th-sort-ies\", \"col\": dash.ALL}, \"n_clicks\")` e `State(\"mun-sort-state\", \"data\")` que atualiza o store `mun-sort-state` alternando `asc` se a mesma coluna for clicada, ou resetando para crescente se for coluna diferente": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385778
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561785915
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562223586
+      }
+    ],
+    "5.1 Aplicar `_decode_categoria()` na coluna `categoria` do DataFrame `tabela` dentro de `renderizar_tabela_faculdades()`, após o `merge` e antes de construir as linhas HTML": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385827
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561786515
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562222074
+      }
+    ],
+    "6.1 Adicionar os inputs `Input(\"mun-categoria\", \"value\")` e `Input(\"mun-modalidade\", \"value\")` ao callback `renderizar_tabela_faculdades()` e aplicar os filtros no DataFrame antes da agregação:": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385862
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562840779
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563383807
+      }
+    ],
+    "7.1 Modificar `atualizar_municipios_por_uf()` para inserir `{\"label\": \"Todos os Municípios\", \"value\": \"TODOS\"}` como primeira opção antes dos municípios individuais e definir esse como valor inicial": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385896
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561787365
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562219159
+      }
+    ],
+    "7.2 Adaptar `renderizar_tabela_faculdades()` para tratar `mun == \"TODOS\"`: remover o filtro por `no_municipio` nos DataFrames `df_c` e `df_i`, agregando por toda a UF": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385928
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562841653
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563385216
+      }
+    ],
+    "7.3 Adaptar `renderizar_detalhes_ies()` para tratar `mun == \"TODOS\"`: filtrar `df_c` por `co_ies` e `sg_uf` sem filtro de município, exibindo dados agregados de todos os municípios da UF para a IES": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561385960
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563386669
+      }
+    ],
+    "8. Checkpoint — Testar ordenação, filtros e dropdown de município": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386021
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563919376
+      }
+    ],
+    "9.1 Refatorar a agregação de `df_cursos_tab` em `renderizar_detalhes_ies()` para calcular os KPIs de financiamento (`fies`, `prouni`, `enem`) como soma direta de `df_c` **antes** do groupby, e manter o groupby separado para a tabela": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386055
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562227712
+      }
+    ],
+    "9.2 Adicionar a linha de totais ao final de `df_cursos_tab`: criar um dicionário `total_row` somando todas as colunas numéricas, inserir `\"—\"` nas colunas textuais (Modalidade, Grau, Área) e `\"TOTAL\"` na coluna \"Curso\"; concatenar ao DataFrame antes da renderização": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386086
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562842672
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563388558
+      }
+    ],
+    "10.1 Substituir a chamada `_tabela_html(df_cursos_tab)` no Painel_Detalhe pela renderização inline que não usa `max_rows` e inclui a coluna `\"#\"` como primeira coluna com valores `1..N`": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386120
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562229278
+      }
+    ],
+    "11.1 Adicionar controles de filtro no topo da seção da Tabela_Cursos dentro de `renderizar_detalhes_ies()`:": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386154
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562850404
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563393171
+      }
+    ],
+    "11.2 Criar callback `filtrar_tabela_cursos()` com `Input(\"mun-curso-busca\", \"value\")`, `Input(\"mun-curso-modal\", \"value\")`, `Input(\"mun-curso-grau\", \"value\")`, `Input(\"mun-curso-area\", \"value\")` e `State(\"mun-ies-selecionada\", \"data\")` que:": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386188
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563398285
+      }
+    ],
+    "12.1 Adicionar `dcc.Download(id=\"mun-download\")` ao layout do Painel_Detalhe e os botões \"Exportar CSV\" (`id=\"mun-btn-export-csv\"`) e, condicionalmente quando `_HAS_OPENPYXL=True`, \"Exportar Excel\" (`id=\"mun-btn-export-xlsx\"`) posicionados na primeira linha do card de detalhes, ao lado do título": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386220
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562231455
+      }
+    ],
+    "12.2 Criar callback `exportar_cursos()` com `Input(\"mun-btn-export-csv\", \"n_clicks\")`, `Input(\"mun-btn-export-xlsx\", \"n_clicks\")` e os `State` necessários (co_ies, uf, mun, ano, filtros de curso) que:": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386253
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563399212
+      }
+    ],
+    "13. Checkpoint — Testar Painel_Detalhe: totais, filtros de curso e exportação": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386285
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563920153
+      }
+    ],
+    "14.1 Adicionar rota `/educacao-superior/ies` ao layout raiz declarando um callback `renderizar_pagina_ies()` que intercepta `dcc.Location` quando `pathname` termina em `/ies`, extrai `co_ies`, `uf`, `municipio` e `ano` da query string e renderiza o Painel_Detalhe isolado": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386318
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563405230
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563913246
+      }
+    ],
+    "14.2 Substituir o botão `\"Ver Cursos e Alunos\"` na Tabela_IES por um componente `html.A` com `href` apontando para `/educacao-superior/ies?co_ies=<val>&uf=<uf>&municipio=<mun>&ano=<ano>` e `target=\"_blank\"`": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386372
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562845926
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563390179
+      }
+    ],
+    "15.1 Criar callback `renderizar_sub_aba_municipio()` com `Input(\"mun-sub-abas\", \"value\")` que controla o conteúdo de `mun-sub-aba-conteudo`: para `\"sub-tabela\"` retorna os containers atuais (Tabela_IES + Painel_Detalhe); para `\"sub-mapa\"` retorna o layout do mapa": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386402
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562843810
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563392089
+      }
+    ],
+    "15.2 Criar a função `_aba_mapa_municipio_layout()` que retorna o layout da sub-aba de mapa: dropdown de indicador (`id=\"mun-mapa-indicador\"`, opções Matrículas/Ingressantes/Concluintes/IES/Cursos) e container `id=\"mun-mapa-mun-container\"`": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386434
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562220825
+      }
+    ],
+    "15.3 Criar callback `renderizar_mapa_municipios()` com inputs `mun-uf`, `mun-ano`, `mun-mapa-indicador` que:": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386463
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563406367
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563914010
+      }
+    ],
+    "16. Implementar decodificação no cabeçalho do Painel_Detalhe": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386492
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563405540
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563914973
+      }
+    ],
+    "17. Checkpoint final — Garantir todos os testes passam": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561386523
+      },
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563920936
+      }
+    ],
+    "2. Configurar infraestrutura de carregamento de coordenadas municipais": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561773754
+      }
+    ],
+    "3. Atualizar `_aba_municipio_layout()` com novos controles de UI": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788561779059
+      }
+    ],
+    "5. Implementar decodificação de `tp_categoria_administrativa` na Tabela_IES": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562222101
+      }
+    ],
+    "4. Implementar ordenação interativa da Tabela_IES": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562226282
+      }
+    ],
+    "10. Implementar exibição completa, numerada e com scroll na Tabela_Cursos": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788562229305
+      }
+    ],
+    "6. Implementar filtros de Categoria Administrativa e Modalidade na Tabela_IES": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563383935
+      }
+    ],
+    "7. Implementar opção \"Todos os Municípios\" no dropdown": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563386780
+      }
+    ],
+    "9. Implementar Painel_Detalhe com correção de FIES e linha de totais": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563388715
+      }
+    ],
+    "11. Implementar filtros de cursos no Painel_Detalhe": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563398476
+      }
+    ],
+    "12. Implementar exportação CSV e Excel da Tabela_Cursos": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563399320
+      }
+    ],
+    "14. Implementar abertura do Painel_Detalhe em nova aba do navegador": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563913445
+      }
+    ],
+    "15. Implementar sub-abas internas e mapa de pontos por município": [
+      {
+        "executionId": "0e4b3b18-9327-4c01-a871-ba1ab77a4558",
+        "chatSessionId": "sess_d037010e-efa2-4787-995b-868ae362e7d9",
+        "timestamp": 1788563914109
+      }
+    ]
+  }
+}
