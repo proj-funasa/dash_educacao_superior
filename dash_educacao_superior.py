@@ -113,25 +113,23 @@ import time as _time
 # Descobrir todos os anos disponíveis
 _anos_df = _trino_query(f"SELECT DISTINCT nu_ano_censo FROM {TBL_CURSOS} ORDER BY nu_ano_censo")
 ANOS_DISPONIVEIS = sorted(_anos_df["nu_ano_censo"].astype(int).tolist())
-ANO_CENSO = ANOS_DISPONIVEIS[-1]  # mais recente, usado como padrão nos KPIs
+ANO_CENSO = ANOS_DISPONIVEIS[-1]
 print(f"[EDUC] Anos disponíveis: {ANOS_DISPONIVEIS} | Padrão: {ANO_CENSO}", flush=True)
 
-# Carregar todos os anos de cursos
+_COLS_CURSOS_STR = ", ".join(COLS_CURSOS)
+_COLS_IES_STR    = ", ".join(COLS_IES)
+
+# Carrega todos os anos — necessário para filtros globais, panorama, cursos e mapa
+# A aba "Visão por Município" faz queries diretas ao Trino por município/ano
 print(f"[EDUC] Carregando cursos (todos os anos)...", flush=True)
 _t0 = _time.time()
-df_cursos = _trino_query(
-    f"SELECT {', '.join(COLS_CURSOS)} FROM {TBL_CURSOS}"
-)
+df_cursos = _trino_query(f"SELECT {_COLS_CURSOS_STR} FROM {TBL_CURSOS}")
 print(f"[EDUC] Cursos carregados: {len(df_cursos)} linhas em {_time.time()-_t0:.0f}s", flush=True)
 
-# Carregar todos os anos de IES
 print(f"[EDUC] Carregando IES (todos os anos)...", flush=True)
 _t0 = _time.time()
-df_ies = _trino_query(
-    f"SELECT {', '.join(COLS_IES)} FROM {TBL_IES}"
-)
+df_ies = _trino_query(f"SELECT {_COLS_IES_STR} FROM {TBL_IES}")
 print(f"[EDUC] IES carregadas: {len(df_ies)} linhas em {_time.time()-_t0:.0f}s", flush=True)
-
 print(f"[EDUC] Cursos: {len(df_cursos)} linhas | IES: {len(df_ies)} linhas", flush=True)
 
 # ── GeoJSON dos estados brasileiros ──────────────────────────────────────────
@@ -1356,29 +1354,43 @@ def renderizar_mapa_municipios(uf, ano, indicador):
     State("mun-sort-state", "data"),
 )
 def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, modalidade, sort_state):
-    # mun pode ser None (nada selecionado) ou "TODOS"
     if not uf or mun is None:
         vazio = html.P("Selecione um Estado e um Município nos filtros acima.", style={"color": "#718096"})
         return vazio, html.Div()
 
     ano = int(ano)
-    # Task 7.2 — quando "TODOS", filtra apenas por UF e ano (sem município)
-    if mun == "TODOS":
-        df_c = df_cursos[(df_cursos["sg_uf"] == uf) & (df_cursos["nu_ano_censo"].astype(int) == ano)]
-        df_i = df_ies[(df_ies["sg_uf_ies"] == uf) & (df_ies["nu_ano_censo"].astype(int) == ano)]
-    else:
-        df_c = df_cursos[(df_cursos["sg_uf"] == uf) & (df_cursos["no_municipio"] == mun) & (df_cursos["nu_ano_censo"].astype(int) == ano)]
-        df_i = df_ies[(df_ies["sg_uf_ies"] == uf) & (df_ies["no_municipio_ies"] == mun) & (df_ies["nu_ano_censo"].astype(int) == ano)]
 
-    # Task 6.1 — filtro de modalidade em df_c
-    if modalidade and modalidade != "Todas":
-        df_c = df_c[df_c["tp_modalidade_ensino"] == modalidade]
+    # ── Query direta ao Trino para evitar filtrar DataFrame grande em memória ──
+    filtro_mun_c = f"AND no_municipio = '{mun}'" if mun != "TODOS" else ""
+    filtro_mun_i = f"AND no_municipio_ies = '{mun}'" if mun != "TODOS" else ""
+    filtro_modal = f"AND tp_modalidade_ensino = '{modalidade}'" if modalidade and modalidade != "Todas" else ""
 
-    # Task 6.1 — filtro de categoria administrativa em df_i (antes do groupby)
+    df_c = _trino_query(f"""
+        SELECT {_COLS_CURSOS_STR}
+        FROM {TBL_CURSOS}
+        WHERE nu_ano_censo = '{ano}'
+          AND sg_uf = '{uf}'
+          {filtro_mun_c}
+          {filtro_modal}
+    """)
+
+    df_i = _trino_query(f"""
+        SELECT {_COLS_IES_STR}
+        FROM {TBL_IES}
+        WHERE nu_ano_censo = '{ano}'
+          AND sg_uf_ies = '{uf}'
+          {filtro_mun_i}
+    """)
+
+    # Aplica tipos numéricos
+    for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest","qt_doc_ex_esp",
+                "qt_doc_ex_femi","qt_doc_ex_masc","qt_tec_total"]:
+        if col in df_i.columns:
+            df_i[col] = pd.to_numeric(df_i[col], errors="coerce").fillna(0)
+
+    # Task 6.1 — filtro de categoria administrativa
     if categoria and categoria != "Todas":
-        df_i_filt = df_ies[df_ies["nu_ano_censo"].astype(int) == ano]
-        df_i_filt = df_i_filt[df_i_filt["tp_categoria_administrativa"].apply(_decode_categoria) == categoria]
-        co_ies_cat = set(df_i_filt["co_ies"].astype(str).tolist())
+        co_ies_cat = set(df_i[df_i["tp_categoria_administrativa"].apply(_decode_categoria) == categoria]["co_ies"].astype(str).tolist())
         df_c = df_c[df_c["co_ies"].astype(str).isin(co_ies_cat)]
         df_i = df_i[df_i["co_ies"].astype(str).isin(co_ies_cat)]
 
@@ -1547,21 +1559,27 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
         )
 
     ano = int(ano)
-    # Task 7.3 — quando "TODOS", filtra por co_ies e sg_uf apenas (sem município)
-    if mun == "TODOS":
-        df_c = df_cursos[
-            (df_cursos["co_ies"].astype(str) == str(co_ies)) &
-            (df_cursos["sg_uf"] == uf) &
-            (df_cursos["nu_ano_censo"].astype(int) == ano)
-        ]
-    else:
-        df_c = df_cursos[
-            (df_cursos["co_ies"].astype(str) == str(co_ies)) &
-            (df_cursos["sg_uf"] == uf) &
-            (df_cursos["no_municipio"] == mun) &
-            (df_cursos["nu_ano_censo"].astype(int) == ano)
-        ]
-    df_i = df_ies[(df_ies["co_ies"].astype(str) == str(co_ies)) & (df_ies["nu_ano_censo"].astype(int) == ano)]
+
+    # ── Query direta ao Trino — filtra por IES/ano/município ──────────────────
+    filtro_mun = f"AND no_municipio = '{mun}'" if mun and mun != "TODOS" else ""
+    df_c = _trino_query(f"""
+        SELECT {_COLS_CURSOS_STR}
+        FROM {TBL_CURSOS}
+        WHERE nu_ano_censo = '{ano}'
+          AND co_ies = {co_ies}
+          AND sg_uf = '{uf}'
+          {filtro_mun}
+    """)
+    df_i = _trino_query(f"""
+        SELECT {_COLS_IES_STR}
+        FROM {TBL_IES}
+        WHERE nu_ano_censo = '{ano}'
+          AND co_ies = {co_ies}
+    """)
+    for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest","qt_doc_ex_esp",
+                "qt_doc_ex_femi","qt_doc_ex_masc","qt_tec_total"]:
+        if col in df_i.columns:
+            df_i[col] = pd.to_numeric(df_i[col], errors="coerce").fillna(0)
 
     nome_ies = df_i["no_ies"].iloc[0] if not df_i.empty else (df_c["co_ies"].iloc[0] if not df_c.empty else co_ies)
     sigla = f" ({df_i['sg_ies'].iloc[0]})" if not df_i.empty and pd.notna(df_i['sg_ies'].iloc[0]) else ""
@@ -1982,6 +2000,8 @@ app.clientside_callback(
     Input("mun-ies-selecionada", "data"),
     prevent_initial_call=True,
 )
+
+
 
 # ── Execução do Servidor ──────────────────────────────────────────────────────
 if __name__ == "__main__":
