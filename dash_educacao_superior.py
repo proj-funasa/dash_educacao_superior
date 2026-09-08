@@ -46,11 +46,13 @@ TRINO_SCHEMA   = os.getenv("TRINO_SCHEMA",    "raw")
 # Tabelas de origem (fully-qualified). Padrão: camada gold do data lake
 # (populada pela DAG etl_educacao_superior / etl/*.sql). Sobrescreva via env
 # para ler outra camada, ex.: TBL_CURSOS=seaweedfs.raw.inep_educacao_superior_cursos.
-TBL_CURSOS = os.getenv("TBL_CURSOS", "gold.gold.educacao_superior_cursos")
-TBL_IES    = os.getenv("TBL_IES",    "gold.gold.educacao_superior_ies")
+TBL_CURSOS = os.getenv("TBL_CURSOS", "seaweedfs.raw.inep_educacao_superior_cursos")
+TBL_IES    = os.getenv("TBL_IES",    "seaweedfs.raw.inep_educacao_superior_ies")
 
-def _trino_query(sql: str) -> pd.DataFrame:
-    """Executa uma query no Trino e retorna um DataFrame."""
+import time as _time_mod
+
+def _trino_query(sql: str, max_retries: int = 3) -> pd.DataFrame:
+    """Executa uma query no Trino e retorna um DataFrame. Retry automático em 502."""
     conn_kwargs = dict(
         host=TRINO_HOST,
         port=TRINO_PORT,
@@ -58,18 +60,24 @@ def _trino_query(sql: str) -> pd.DataFrame:
         catalog=TRINO_CATALOG,
         schema=TRINO_SCHEMA,
     )
-    # Só usa HTTPS + BasicAuth quando uma senha é fornecida via ambiente.
     if TRINO_PASSWORD:
         conn_kwargs["http_scheme"] = "https"
         conn_kwargs["auth"] = trino.auth.BasicAuthentication(TRINO_USER, TRINO_PASSWORD)
 
-    conn = trino.dbapi.connect(**conn_kwargs)
-    cur = conn.cursor()
-    cur.execute(sql)
-    cols = [d[0] for d in cur.description]
-    rows = cur.fetchall()
-    conn.close()
-    return pd.DataFrame(rows, columns=cols)
+    for tentativa in range(1, max_retries + 1):
+        try:
+            conn = trino.dbapi.connect(**conn_kwargs)
+            cur = conn.cursor()
+            cur.execute(sql)
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchall()
+            conn.close()
+            return pd.DataFrame(rows, columns=cols)
+        except Exception as e:
+            print(f"[TRINO] Tentativa {tentativa}/{max_retries} falhou: {e}", flush=True)
+            if tentativa == max_retries:
+                raise
+            _time_mod.sleep(5 * tentativa)  # 5s, 10s, 15s
 
 print("[EDUC] Carregando tabela de cursos...", flush=True)
 
@@ -95,7 +103,7 @@ COLS_IES = [
     "tp_organizacao_academica", "tp_rede", "tp_categoria_administrativa",
     "co_ies", "no_ies", "sg_ies",
     "qt_doc_total", "qt_doc_exe",
-    "qt_doc_ex_dout", "qt_doc_ex_mest",
+    "qt_doc_ex_dout", "qt_doc_ex_mest", "qt_doc_ex_esp",
     "qt_doc_ex_femi", "qt_doc_ex_masc",
     "qt_tec_total",
 ]
@@ -255,7 +263,7 @@ for col in ["qt_curso","qt_vg_total","qt_inscrito_total",
             "qt_aluno_deficiente","qt_mat_deficiente"]:
     df_cursos[col] = pd.to_numeric(df_cursos[col], errors="coerce").fillna(0)
 
-for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest",
+for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest","qt_doc_ex_esp",
             "qt_doc_ex_femi","qt_doc_ex_masc","qt_tec_total"]:
     df_ies[col] = pd.to_numeric(df_ies[col], errors="coerce").fillna(0)
 
@@ -1574,6 +1582,9 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     doc_exe = int(df_i["qt_doc_exe"].sum()) if not df_i.empty else 0
     doc_dout = int(df_i["qt_doc_ex_dout"].sum()) if not df_i.empty else 0
     doc_mest = int(df_i["qt_doc_ex_mest"].sum()) if not df_i.empty else 0
+    doc_esp  = int(df_i["qt_doc_ex_esp"].sum())  if not df_i.empty else 0
+    # Graduados = em exercício - (doutores + mestres + especialistas)
+    doc_grad = max(0, doc_exe - doc_dout - doc_mest - doc_esp)
 
     # ── Task 9.1: KPIs de financiamento — soma direta de df_c ANTES do groupby
     # Garante que os valores no card "Perfil dos Alunos" sempre coincidam com a soma
@@ -1691,8 +1702,10 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
                     _titulo("Corpo Docente (Nível da Instituição)"),
                     html.Ul([
                         html.Li(f"Docentes em Exercício: {_fmt_mil(doc_exe)}"),
-                        html.Li(f"Docentes Doutores: {_fmt_mil(doc_dout)}"),
-                        html.Li(f"Docentes Mestres: {_fmt_mil(doc_mest)}"),
+                        html.Li(f"  ↳ Doutores: {_fmt_mil(doc_dout)}"),
+                        html.Li(f"  ↳ Mestres: {_fmt_mil(doc_mest)}"),
+                        html.Li(f"  ↳ Especialistas: {_fmt_mil(doc_esp)}"),
+                        html.Li(f"  ↳ Graduados: {_fmt_mil(doc_grad)}"),
                     ], style={"fontSize": 13, "lineHeight": "1.8", "color": "#2d3748", "paddingLeft": 20}),
                 ], style={"flex": 1, "backgroundColor": "#f7fafc", "padding": 12, "borderRadius": 6}),
             ], style={"display": "flex", "gap": 12, "marginBottom": 16, "flexWrap": "wrap"}),
