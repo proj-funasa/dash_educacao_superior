@@ -20,11 +20,8 @@ import trino
 from loading_components import educ_page_loading
 
 # ── Shared layout MIV BigData FUNASA (opcional) ───────────────────────────────
-try:
-    from shared_layout import wrap_layout, miv_style_tag
-    _HAS_MIV = True
-except ImportError:
-    _HAS_MIV = False
+# Sidebar MIV desabilitada
+_HAS_MIV = False
 
 # ── Dependências opcionais ────────────────────────────────────────────────────
 try:
@@ -697,6 +694,8 @@ def _aba_municipio_layout():
         dcc.Store(id="mun-ies-selecionada", data=None),
         dcc.Store(id="mun-sort-state", data={"col": "total_mat", "asc": False}),
         dcc.Store(id="mun-scroll-trigger", data=None),
+        dcc.Store(id="mun-dados-tabela", data=None),   # cache dos dados processados
+        dcc.Store(id="mun-pagina", data=0),             # página atual da tabela
 
         # Filtros
         _card([
@@ -1156,6 +1155,31 @@ def atualizar_municipios_por_uf(uf, ano):
     return options, "TODOS"
 
 
+# Callbacks de paginação
+@app.callback(
+    Output("mun-pagina", "data", allow_duplicate=True),
+    Input("mun-pag-anterior", "n_clicks"),
+    State("mun-pagina", "data"),
+    prevent_initial_call=True,
+)
+def pagina_anterior(n, pagina):
+    return max(0, (pagina or 0) - 1)
+
+
+@app.callback(
+    Output("mun-pagina", "data", allow_duplicate=True),
+    Input("mun-pag-proxima", "n_clicks"),
+    State("mun-pagina", "data"),
+    State("mun-dados-tabela", "data"),
+    prevent_initial_call=True,
+)
+def proxima_pagina(n, pagina, dados):
+    if not dados:
+        return 0
+    total_paginas = max(1, (len(dados) + PAGE_SIZE - 1) // PAGE_SIZE)
+    return min((pagina or 0) + 1, total_paginas - 1)
+
+
 # 2. Resetar seleção de IES quando os filtros principais mudarem
 @app.callback(
     Output("mun-ies-selecionada", "data"),
@@ -1243,8 +1267,22 @@ def renderizar_sub_aba_municipio(sub_aba, uf):
         ]),
         html.Div(style={"height": 12}),
         html.Div(id="mun-tabela-ies-container"),
+        # Botões de paginação estáticos — não são recriados a cada render
+        html.Div([
+            html.Button("◀ Anterior", id="mun-pag-anterior", n_clicks=0,
+                        style={"marginRight": 8, "padding": "4px 12px", "fontSize": 12, "cursor": "pointer"}),
+            html.Span(id="mun-pag-info", style={"fontSize": 12, "color": "#4a5568"}),
+            html.Button("Próxima ▶", id="mun-pag-proxima", n_clicks=0,
+                        style={"marginLeft": 8, "padding": "4px 12px", "fontSize": 12, "cursor": "pointer"}),
+        ], id="mun-paginacao-container",
+           style={"display": "none", "alignItems": "center", "justifyContent": "center",
+                  "marginTop": 12, "gap": 4}),
         html.Div(style={"height": 16}),
-        html.Div(id="mun-detalhe-ies-container"),
+        dcc.Loading(
+            html.Div(id="mun-detalhe-ies-container"),
+            type="default",
+            color=COR_AZUL,
+        ),
     ])
 
 
@@ -1341,26 +1379,24 @@ def renderizar_mapa_municipios(uf, ano, indicador):
     return dcc.Graph(figure=fig, config={"displayModeBar": False})
 
 
-# 4. Renderizar Tabela Master de Faculdades no Município
+# 4a. Callback PESADO — busca Trino + processamento
+#     Dispara apenas quando filtros de localização/período mudam (NÃO quando seleciona IES)
 @app.callback(
-    Output("mun-tabela-ies-container", "children"),
+    Output("mun-dados-tabela", "data"),
     Output("mun-kpi-ies", "children"),
+    Output("mun-pagina", "data"),
     Input("mun-uf", "value"),
     Input("mun-municipio", "value"),
     Input("mun-ano", "value"),
-    Input("mun-ies-selecionada", "data"),
     Input("mun-categoria", "value"),
     Input("mun-modalidade", "value"),
     State("mun-sort-state", "data"),
 )
-def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, modalidade, sort_state):
+def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
     if not uf or mun is None:
-        vazio = html.P("Selecione um Estado e um Município nos filtros acima.", style={"color": "#718096"})
-        return vazio, html.Div()
+        return None, html.Div(), 0
 
     ano = int(ano)
-
-    # ── Query direta ao Trino para evitar filtrar DataFrame grande em memória ──
     filtro_mun_c = f"AND no_municipio = '{mun}'" if mun != "TODOS" else ""
     filtro_mun_i = f"AND no_municipio_ies = '{mun}'" if mun != "TODOS" else ""
     filtro_modal = f"AND tp_modalidade_ensino = '{modalidade}'" if modalidade and modalidade != "Todas" else ""
@@ -1373,7 +1409,6 @@ def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, mo
           {filtro_mun_c}
           {filtro_modal}
     """)
-
     df_i = _trino_query(f"""
         SELECT {_COLS_IES_STR}
         FROM {TBL_IES}
@@ -1381,37 +1416,31 @@ def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, mo
           AND sg_uf_ies = '{uf}'
           {filtro_mun_i}
     """)
-
-    # Aplica tipos numéricos
     for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest","qt_doc_ex_esp",
                 "qt_doc_ex_femi","qt_doc_ex_masc","qt_tec_total"]:
         if col in df_i.columns:
             df_i[col] = pd.to_numeric(df_i[col], errors="coerce").fillna(0)
 
-    # Task 6.1 — filtro de categoria administrativa
     if categoria and categoria != "Todas":
         co_ies_cat = set(df_i[df_i["tp_categoria_administrativa"].apply(_decode_categoria) == categoria]["co_ies"].astype(str).tolist())
         df_c = df_c[df_c["co_ies"].astype(str).isin(co_ies_cat)]
         df_i = df_i[df_i["co_ies"].astype(str).isin(co_ies_cat)]
 
+    kpi_zero = html.Div([
+        html.P("0", style={"fontSize": 26, "fontWeight": 700, "color": "#fff", "margin": 0}),
+        html.P("IES no Município", style={"fontSize": 10, "color": "#BEE3F8", "margin": 0,
+                                          "textTransform": "uppercase", "letterSpacing": "0.05em"}),
+    ])
     if df_c.empty and df_i.empty:
-        kpi_zero = html.Div([
-            html.P("0", style={"fontSize": 26, "fontWeight": 700, "color": "#fff", "margin": 0}),
-            html.P("IES no Município", style={"fontSize": 10, "color": "#BEE3F8", "margin": 0,
-                                              "textTransform": "uppercase", "letterSpacing": "0.05em"}),
-        ])
-        return html.P("Nenhum dado encontrado para a combinação selecionada.",
-                      style={"color": "#e53e3e"}), kpi_zero
+        return None, kpi_zero, 0
 
-    # Agrupa dados de cursos por IES (base: todos que têm cursos no município)
     ies_cursos = df_c.groupby("co_ies").agg(
-        total_cursos=("no_curso", "nunique"),      # cursos únicos por nome
+        total_cursos=("no_curso", "nunique"),
         total_mat=("qt_mat", "sum"),
         total_ing=("qt_ing", "sum"),
         total_conc=("qt_conc", "sum"),
     ).reset_index()
 
-    # Dados cadastrais de todas as IES do ano (sem filtrar por município de sede)
     ies_info_global = df_ies[df_ies["nu_ano_censo"].astype(int) == ano].groupby("co_ies").agg(
         nome_ies=("no_ies", "first"),
         sigla_ies=("sg_ies", "first"),
@@ -1419,40 +1448,73 @@ def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, mo
         categoria=("tp_categoria_administrativa", "first"),
         no_municipio_sede=("no_municipio_ies", "first"),
         sg_uf_sede=("sg_uf_ies", "first"),
-        docentes=("qt_doc_exe", "sum"),
     ).reset_index()
 
-    # Merge: parte dos cursos (todas as IES que atuam no município)
-    # e enriquece com dados cadastrais — inclui EAD de outras sedes
     tabela = pd.merge(ies_cursos, ies_info_global, on="co_ies", how="left")
-
-    # IES sem cadastro na tabela ies (raro) recebem fallback
     tabela["nome_ies"] = tabela["nome_ies"].fillna("IES " + tabela["co_ies"].astype(str))
     tabela["sigla_ies"] = tabela["sigla_ies"].fillna("")
     tabela["rede"] = tabela["rede"].fillna("-")
-    tabela["categoria"] = tabela["categoria"].fillna("-")
+    tabela["categoria"] = tabela["categoria"].apply(
+        lambda v: _decode_categoria(v) if pd.notna(v) else "-"
+    )
     tabela["no_municipio_sede"] = tabela["no_municipio_sede"].fillna("-")
     tabela["sg_uf_sede"] = tabela["sg_uf_sede"].fillna("-")
+    for c in ["total_cursos", "total_mat", "total_ing", "total_conc"]:
+        tabela[c] = tabela[c].fillna(0).astype(int)
 
-    tabela["total_cursos"] = tabela["total_cursos"].fillna(0).astype(int)
-    tabela["total_mat"] = tabela["total_mat"].fillna(0).astype(int)
-    tabela["total_ing"] = tabela["total_ing"].fillna(0).astype(int)
-    tabela["total_conc"] = tabela["total_conc"].fillna(0).astype(int)
+    if not sort_state:
+        sort_state = {"col": "total_mat", "asc": False}
+    tabela = tabela.sort_values(
+        by=sort_state.get("col", "total_mat"),
+        ascending=sort_state.get("asc", False)
+    )
 
-    # Task 5.1 — decodificar categoria administrativa para rótulo legível
-    tabela["categoria"] = tabela["categoria"].apply(_decode_categoria)
+    n_ies = len(tabela)
+    kpi_ies = html.Div([
+        html.P(f"{n_ies}", style={"fontSize": 26, "fontWeight": 700, "color": "#fff", "margin": 0}),
+        html.P("IES no Município", style={"fontSize": 10, "color": "#BEE3F8", "margin": 0,
+                                          "textTransform": "uppercase", "letterSpacing": "0.05em"}),
+    ])
 
-    # Task 4.1 — ordenação interativa via sort_state
+    return tabela.to_dict("records"), kpi_ies, 0
+
+
+# 4b. Callback LEVE — só renderiza HTML a partir dos dados em cache
+#     Dispara quando: seleciona IES, muda página, ordena coluna
+PAGE_SIZE = 30
+
+@app.callback(
+    Output("mun-tabela-ies-container", "children"),
+    Output("mun-pag-info", "children"),
+    Output("mun-paginacao-container", "style"),
+    Input("mun-dados-tabela", "data"),
+    Input("mun-ies-selecionada", "data"),
+    Input("mun-pagina", "data"),
+    State("mun-sort-state", "data"),
+    State("mun-uf", "value"),
+    State("mun-municipio", "value"),
+)
+def renderizar_tabela_faculdades(dados, ies_selecionada_co, pagina, sort_state, uf, mun):
+    _estilo_pag_oculto = {"display": "none"}
+    _estilo_pag_visivel = {"display": "flex", "alignItems": "center",
+                           "justifyContent": "center", "marginTop": 12, "gap": 4}
+
+    if not dados:
+        return (html.P("Selecione um Estado e um Município nos filtros acima.",
+                       style={"color": "#718096"}),
+                "", _estilo_pag_oculto)
+
+    tabela = pd.DataFrame(dados)
+    pagina = pagina or 0
+    total = len(tabela)
+    total_paginas = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    fatia = tabela.iloc[pagina * PAGE_SIZE : (pagina + 1) * PAGE_SIZE]
+
     if not sort_state:
         sort_state = {"col": "total_mat", "asc": False}
     sort_col = sort_state.get("col", "total_mat")
     sort_asc = sort_state.get("asc", False)
-    _sortable_cols = {"total_mat", "total_ing", "total_conc", "total_cursos"}
-    if sort_col not in _sortable_cols:
-        sort_col = "total_mat"
-    tabela = tabela.sort_values(by=sort_col, ascending=sort_asc)
 
-    # Task 4.2 — helper para cabeçalhos ordenáveis com seta indicadora
     def _th_sort(label, col_key, align="right"):
         arrow = (" ↑" if sort_asc else " ↓") if sort_col == col_key else ""
         return html.Th(
@@ -1466,13 +1528,12 @@ def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, mo
             },
         )
 
-    # Construção da Tabela HTML customizada com Botão de Ação
     header = html.Tr([
-        html.Th("Ação", style={"padding": "10px", "textAlign": "center", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
+        html.Th("Ação",    style={"padding": "10px", "textAlign": "center", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
         html.Th("Cód. IES", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
         html.Th("Nome da Faculdade / IES", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        html.Th("Sede", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        html.Th("Rede", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
+        html.Th("Sede",    style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
+        html.Th("Rede",    style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
         html.Th("Categoria", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
         _th_sort("Cursos Únicos", "total_cursos"),
         _th_sort("Matrículas",    "total_mat"),
@@ -1481,31 +1542,23 @@ def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, mo
     ])
 
     rows = []
-    for _, r in tabela.iterrows():
+    for _, r in fatia.iterrows():
         co_ies_val = str(r["co_ies"])
         is_selected = (str(ies_selecionada_co) == co_ies_val)
-
         bg = "#ebf8ff" if is_selected else "#ffffff"
-        btn_color = COR_VERDE if is_selected else COR_AZUL
-
-        # Botão de seleção — dispara o callback capturar_clique_ies que
-        # atualiza mun-ies-selecionada e o clientside_callback faz scroll
         btn_text = "✓ Selecionada" if is_selected else "Ver Cursos e Alunos"
         btn = html.Button(
             btn_text,
             id={"type": "btn-sel-ies", "co_ies": co_ies_val},
             n_clicks=0,
             style={
-                "backgroundColor": btn_color, "color": "#fff", "border": "none",
-                "borderRadius": 4, "padding": "6px 12px", "fontSize": 11,
-                "fontWeight": 600, "cursor": "pointer",
+                "backgroundColor": COR_VERDE if is_selected else COR_AZUL,
+                "color": "#fff", "border": "none", "borderRadius": 4,
+                "padding": "6px 12px", "fontSize": 11, "fontWeight": 600, "cursor": "pointer",
             },
         )
         sigla_str = f" ({r['sigla_ies']})" if r.get('sigla_ies') and str(r['sigla_ies']) not in ("nan", "-", "") else ""
-        nome_completo = f"{r['nome_ies']}{sigla_str}"
         sede_str = f"{r.get('no_municipio_sede', '-')} / {r.get('sg_uf_sede', '-')}"
-        # Task 7.2 — quando "TODOS", ★ apenas se sede for de outra UF; caso contrário
-        # marca IES com sede fora do município selecionado
         if mun == "TODOS":
             if str(r.get('sg_uf_sede', uf)) != uf:
                 sede_str += " ★"
@@ -1516,29 +1569,21 @@ def renderizar_tabela_faculdades(uf, mun, ano, ies_selecionada_co, categoria, mo
         rows.append(html.Tr([
             html.Td(btn, style={"padding": "8px", "textAlign": "center", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(co_ies_val, style={"padding": "8px", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(nome_completo, style={"padding": "8px", "fontSize": 12, "fontWeight": 600, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
+            html.Td(f"{r['nome_ies']}{sigla_str}", style={"padding": "8px", "fontSize": 12, "fontWeight": 600, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(sede_str, style={"padding": "8px", "fontSize": 11, "color": "#718096", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(r["rede"], style={"padding": "8px", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(r["categoria"], style={"padding": "8px", "fontSize": 12, "color": "#4a5568", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(_fmt_mil(r["total_cursos"]), style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(_fmt_mil(r["total_mat"]), style={"padding": "8px", "textAlign": "right", "fontSize": 12, "fontWeight": 700, "color": COR_AZUL, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(_fmt_mil(r["total_ing"]), style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(_fmt_mil(r["total_conc"]), style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
+            html.Td(_fmt_mil(r["total_mat"]),    style={"padding": "8px", "textAlign": "right", "fontSize": 12, "fontWeight": 700, "color": COR_AZUL, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
+            html.Td(_fmt_mil(r["total_ing"]),    style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
+            html.Td(_fmt_mil(r["total_conc"]),   style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
         ]))
 
-    n_ies = len(tabela)
-    kpi_ies = html.Div([
-        html.P(f"{n_ies}", style={"fontSize": 26, "fontWeight": 700, "color": "#fff", "margin": 0}),
-        html.P("IES no Município", style={"fontSize": 10, "color": "#BEE3F8", "margin": 0,
-                                          "textTransform": "uppercase", "letterSpacing": "0.05em"}),
-    ])
+    pag_info = f"Página {pagina + 1} de {total_paginas}  ({total} IES)"
+    tabela_html = html.Table([html.Thead(header), html.Tbody(rows)],
+                             style={"width": "100%", "borderCollapse": "collapse"})
 
-    if df_c.empty and df_i.empty:
-        return html.P("Nenhum dado encontrado para a combinação selecionada.",
-                      style={"color": "#e53e3e"}), kpi_ies
-
-    return html.Table([html.Thead(header), html.Tbody(rows)],
-                      style={"width": "100%", "borderCollapse": "collapse"}), kpi_ies
+    return tabela_html, pag_info, _estilo_pag_visivel
 
 
 # 5. Renderizar o Painel Detalhado de Cursos e Alunos da Faculdade Selecionada
