@@ -946,14 +946,12 @@ def atualizar_cursos(ano, regiao, uf, modal, grau, rede):
     n_mat    = int(df["qt_mat"].sum())
     n_ing    = int(df["qt_ing"].sum())
     n_conc   = int(df["qt_conc"].sum())
-    n_vg     = int(df["qt_vg_total"].sum())
 
     kpis = html.Div([
         _kpi(_fmt_mil(n_cursos), "Cursos",       COR_CARD_1),
         _kpi(_fmt_mil(n_mat),    "Matrículas",   COR_CARD_2),
         _kpi(_fmt_mil(n_ing),    "Ingressantes", COR_CARD_3),
         _kpi(_fmt_mil(n_conc),   "Concluintes",  COR_CARD_5),
-        _kpi(_fmt_mil(n_vg),     "Vagas Totais", COR_CARD_4),
     ], style={"display": "flex", "gap": 12, "flexWrap": "wrap"})
 
     # Gráfico: Área do conhecimento × Matrículas
