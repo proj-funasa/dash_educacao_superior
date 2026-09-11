@@ -1461,7 +1461,6 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
     ies_info_global = df_ies[df_ies["nu_ano_censo"].astype(int) == ano].groupby("co_ies").agg(
         nome_ies=("no_ies", "first"),
         sigla_ies=("sg_ies", "first"),
-        rede=("tp_rede", "first"),
         categoria=("tp_categoria_administrativa", "first"),
         no_municipio_sede=("no_municipio_ies", "first"),
         sg_uf_sede=("sg_uf_ies", "first"),
@@ -1470,7 +1469,6 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
     tabela = pd.merge(ies_cursos, ies_info_global, on="co_ies", how="left")
     tabela["nome_ies"] = tabela["nome_ies"].fillna("IES " + tabela["co_ies"].astype(str))
     tabela["sigla_ies"] = tabela["sigla_ies"].fillna("")
-    tabela["rede"] = tabela["rede"].fillna("-")
     tabela["categoria"] = tabela["categoria"].apply(
         lambda v: _decode_categoria(v) if pd.notna(v) else "-"
     )
@@ -1560,7 +1558,6 @@ def renderizar_tabela_faculdades(dados, ies_selecionada_co, pagina, sort_state, 
         _th_sort("Cód. IES", "co_ies", align="left"),
         _th_sort("Nome da Faculdade / IES", "nome_ies", align="left"),
         _th_sort("Sede", "no_municipio_sede", align="left"),
-        _th_sort("Rede", "rede", align="left"),
         _th_sort("Categoria", "categoria", align="left"),
         _th_sort("Cursos Únicos", "total_cursos"),
         _th_sort("Matrículas",    "total_mat"),
@@ -1598,7 +1595,6 @@ def renderizar_tabela_faculdades(dados, ies_selecionada_co, pagina, sort_state, 
             html.Td(co_ies_val, style={"padding": "8px", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(f"{r['nome_ies']}{sigla_str}", style={"padding": "8px", "fontSize": 12, "fontWeight": 600, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(sede_str, style={"padding": "8px", "fontSize": 11, "color": "#718096", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(r["rede"], style={"padding": "8px", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(r["categoria"], style={"padding": "8px", "fontSize": 12, "color": "#4a5568", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(_fmt_mil(r["total_cursos"]), style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
             html.Td(_fmt_mil(r["total_mat"]),    style={"padding": "8px", "textAlign": "right", "fontSize": 12, "fontWeight": 700, "color": COR_AZUL, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
