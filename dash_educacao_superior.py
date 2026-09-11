@@ -332,7 +332,8 @@ def _layout_base():
     )
 
 
-def _kpi(valor, label, cor):
+def _kpi(valor, label, cor, detalhes=None):
+    detalhes = detalhes or []
     return html.Div(
         [
             html.P(valor, style={"fontSize": 28, "fontWeight": 700, "color": "#fff",
@@ -340,6 +341,14 @@ def _kpi(valor, label, cor):
             html.P(label, style={"fontSize": 11, "fontWeight": 600, "color": "#fff",
                                   "margin": 0, "textTransform": "uppercase",
                                   "letterSpacing": "0.05em", "whiteSpace": "nowrap"}),
+            html.Div([
+                html.Span(f"{modalidade}: {_fmt_mil(valor_modalidade)}")
+                for modalidade, valor_modalidade in detalhes
+            ], style={
+                "display": "flex", "gap": 10, "flexWrap": "wrap",
+                "fontSize": 10, "color": "rgba(255,255,255,0.9)",
+                "marginTop": 8,
+            }) if detalhes else None,
         ],
         style={"backgroundColor": cor, "borderRadius": 8, "padding": "18px 22px",
                "flex": 1, "minWidth": 160},
@@ -696,6 +705,7 @@ def _aba_municipio_layout():
         dcc.Store(id="mun-scroll-trigger", data=None),
         dcc.Store(id="mun-dados-tabela", data=None),   # cache dos dados processados
         dcc.Store(id="mun-pagina", data=0),             # página atual da tabela
+        dcc.Store(id="mun-cursos-sort-state", data={"col": "Matrículas", "asc": False}),
 
         # Filtros
         _card([
@@ -1101,12 +1111,12 @@ def atualizar_mapa(indicador, ano, modal, rede, grau):
         z=agrup["Valor"],
         featureidkey="properties.sigla",
         colorscale=[
-            [0.0,  "#EBF5FB"],
-            [0.15, "#AED6F1"],
-            [0.35, "#5DADE2"],
-            [0.6,  "#2E86C1"],
-            [0.8,  "#1A5276"],
-            [1.0,  "#0B2B40"],
+            [0.0,  "#9ECAE1"],
+            [0.15, "#6BAED6"],
+            [0.35, "#4292C6"],
+            [0.6,  "#2171B5"],
+            [0.8,  "#08519C"],
+            [1.0,  "#08306B"],
         ],
         marker_opacity=0.85,
         marker_line_width=1,
@@ -1324,6 +1334,14 @@ def renderizar_mapa_municipios(uf, ano, indicador):
     else:  # Cursos
         agrup = df.groupby("co_municipio")["co_curso"].nunique().reset_index().rename(columns={"co_curso": "Valor"})
 
+    nomes_municipios = (
+        df.groupby("co_municipio", as_index=False)["no_municipio"]
+        .first()
+        .rename(columns={"no_municipio": "Municipio"})
+    )
+    agrup = agrup.merge(nomes_municipios, on="co_municipio", how="left")
+    agrup["Municipio"] = agrup["Municipio"].fillna("Município não identificado")
+
     # Garantir que o código do município seja string para o join com GeoJSON
     agrup["co_municipio"] = agrup["co_municipio"].astype(str).str.strip()
 
@@ -1342,17 +1360,18 @@ def renderizar_mapa_municipios(uf, ano, indicador):
         z=agrup["Valor"],
         featureidkey="properties.codarea",
         colorscale=[
-            [0.0,  "#EBF5FB"],
-            [0.15, "#AED6F1"],
-            [0.35, "#5DADE2"],
-            [0.6,  "#2E86C1"],
-            [0.8,  "#1A5276"],
-            [1.0,  "#0B2B40"],
+            [0.0,  "#9ECAE1"],
+            [0.15, "#6BAED6"],
+            [0.35, "#4292C6"],
+            [0.6,  "#2171B5"],
+            [0.8,  "#08519C"],
+            [1.0,  "#08306B"],
         ],
         marker_opacity=0.85,
         marker_line_width=0.5,
         marker_line_color="#ffffff",
-        hovertemplate="<b>%{location}</b><br>" + indicador + ": %{z:,.0f}<extra></extra>",
+        customdata=agrup[["Municipio"]],
+        hovertemplate="<b>%{customdata[0]}</b><br>Código IBGE: %{location}<br>" + indicador + ": %{z:,.0f}<extra></extra>",
     ))
 
     # Centralizar: se UF específica, foca nela; senão Brasil
@@ -1488,7 +1507,7 @@ PAGE_SIZE = 30
     Input("mun-dados-tabela", "data"),
     Input("mun-ies-selecionada", "data"),
     Input("mun-pagina", "data"),
-    State("mun-sort-state", "data"),
+    Input("mun-sort-state", "data"),
     State("mun-uf", "value"),
     State("mun-municipio", "value"),
 )
@@ -1503,21 +1522,31 @@ def renderizar_tabela_faculdades(dados, ies_selecionada_co, pagina, sort_state, 
                 "", _estilo_pag_oculto)
 
     tabela = pd.DataFrame(dados)
-    pagina = pagina or 0
-    total = len(tabela)
-    total_paginas = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
-    fatia = tabela.iloc[pagina * PAGE_SIZE : (pagina + 1) * PAGE_SIZE]
-
     if not sort_state:
         sort_state = {"col": "total_mat", "asc": False}
     sort_col = sort_state.get("col", "total_mat")
     sort_asc = sort_state.get("asc", False)
 
+    if sort_col in tabela.columns:
+        tabela = tabela.sort_values(
+            by=sort_col,
+            ascending=sort_asc,
+            kind="mergesort",
+            na_position="last",
+        )
+
+    pagina = pagina or 0
+    total = len(tabela)
+    total_paginas = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    fatia = tabela.iloc[pagina * PAGE_SIZE : (pagina + 1) * PAGE_SIZE]
+
     def _th_sort(label, col_key, align="right"):
-        arrow = (" ↑" if sort_asc else " ↓") if sort_col == col_key else ""
+        arrow = " ↑" if sort_col == col_key and sort_asc else " ↓" if sort_col == col_key else " ↕"
         return html.Th(
             label + arrow,
             id={"type": "th-sort-ies", "col": col_key},
+            n_clicks=0,
+            title="Clique para ordenar; clique novamente para inverter a ordem",
             style={
                 "padding": "10px", "textAlign": align, "fontSize": 11,
                 "borderBottom": "2px solid #e2e8f0",
@@ -1528,11 +1557,11 @@ def renderizar_tabela_faculdades(dados, ies_selecionada_co, pagina, sort_state, 
 
     header = html.Tr([
         html.Th("Ação",    style={"padding": "10px", "textAlign": "center", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        html.Th("Cód. IES", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        html.Th("Nome da Faculdade / IES", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        html.Th("Sede",    style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        html.Th("Rede",    style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        html.Th("Categoria", style={"padding": "10px", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
+        _th_sort("Cód. IES", "co_ies", align="left"),
+        _th_sort("Nome da Faculdade / IES", "nome_ies", align="left"),
+        _th_sort("Sede", "no_municipio_sede", align="left"),
+        _th_sort("Rede", "rede", align="left"),
+        _th_sort("Categoria", "categoria", align="left"),
         _th_sort("Cursos Únicos", "total_cursos"),
         _th_sort("Matrículas",    "total_mat"),
         _th_sort("Ingressantes",  "total_ing"),
@@ -1633,7 +1662,28 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     mat_total = int(df_c["qt_mat"].sum())
     ing_total = int(df_c["qt_ing"].sum())
     conc_total = int(df_c["qt_conc"].sum())
-    vagas_total = int(df_c["qt_vg_total"].sum())
+
+    def _classificar_modalidade(valor):
+        modalidade = str(valor).strip().lower()
+        if "ead" in modalidade or "dist" in modalidade:
+            return "EAD"
+        if "pres" in modalidade:
+            return "Presencial"
+        return None
+
+    def _totais_por_modalidade(coluna):
+        modalidades = df_c["tp_modalidade_ensino"].map(_classificar_modalidade)
+        totais = df_c.assign(_modalidade_resumo=modalidades).groupby(
+            "_modalidade_resumo"
+        )[coluna].sum()
+        return [
+            (modalidade, int(totais.get(modalidade, 0)))
+            for modalidade in ("Presencial", "EAD")
+        ]
+
+    mat_modalidade = _totais_por_modalidade("qt_mat")
+    ing_modalidade = _totais_por_modalidade("qt_ing")
+    conc_modalidade = _totais_por_modalidade("qt_conc")
 
     mat_fem = int(df_c["qt_mat_fem"].sum())
     mat_masc = int(df_c["qt_mat_masc"].sum())
@@ -1655,7 +1705,7 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     enem   = int(df_c["qt_ing_enem"].sum())
 
     # Tabela de Cursos — agrupa por nome+modalidade+grau para consolidar autorizações múltiplas
-    _NUMERIC_COLS = ["Vagas", "Ingressantes", "Matrículas", "Concluintes",
+    _NUMERIC_COLS = ["Ingressantes", "Matrículas", "Concluintes",
                      "FIES", "ProUni", "Mat. Fem.", "Mat. Masc.", "ENEM", "Deficientes"]
     _TEXT_COLS    = ["Curso", "Modalidade", "Grau", "Área"]
 
@@ -1663,7 +1713,6 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
         df_c.groupby(["no_curso", "tp_modalidade_ensino", "tp_grau_academico",
                       "no_cine_area_geral"], dropna=False)
         .agg(
-            Vagas=("qt_vg_total", "sum"),
             Ingressantes=("qt_ing", "sum"),
             Matrículas=("qt_mat", "sum"),
             Concluintes=("qt_conc", "sum"),
@@ -1739,10 +1788,9 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
             # Cards de resumo de alunos da Faculdade
             _titulo("Resumo do Corpo Discente e Docente da Faculdade"),
             html.Div([
-                _kpi(_fmt_mil(mat_total), "Matrículas Ativas", COR_AZUL),
-                _kpi(_fmt_mil(ing_total), "Ingressantes", COR_VERDE),
-                _kpi(_fmt_mil(conc_total), "Concluintes", COR_ROXO),
-                _kpi(_fmt_mil(vagas_total), "Vagas Ofertadas", COR_CINZA),
+                _kpi(_fmt_mil(mat_total), "Matrículas Ativas", COR_AZUL, mat_modalidade),
+                _kpi(_fmt_mil(ing_total), "Ingressantes", COR_VERDE, ing_modalidade),
+                _kpi(_fmt_mil(conc_total), "Concluintes", COR_ROXO, conc_modalidade),
             ], style={"display": "flex", "gap": 12, "marginBottom": 12, "flexWrap": "wrap"}),
 
             # Detalhes de Alunos & Apoio
@@ -1817,7 +1865,7 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
 def _build_cursos_tab(co_ies, uf, mun, ano):
     """Reconstrói o DataFrame de cursos agrupado (antes da formatação) para a
     IES selecionada, aplicando os mesmos filtros de renderizar_detalhes_ies()."""
-    _NUMERIC_COLS = ["Vagas", "Ingressantes", "Matrículas", "Concluintes",
+    _NUMERIC_COLS = ["Ingressantes", "Matrículas", "Concluintes",
                      "FIES", "ProUni", "Mat. Fem.", "Mat. Masc.", "ENEM", "Deficientes"]
     _TEXT_COLS    = ["Curso", "Modalidade", "Grau", "Área"]
 
@@ -1849,7 +1897,6 @@ def _build_cursos_tab(co_ies, uf, mun, ano):
             dropna=False,
         )
         .agg(
-            Vagas=("qt_vg_total", "sum"),
             Ingressantes=("qt_ing", "sum"),
             Matrículas=("qt_mat", "sum"),
             Concluintes=("qt_conc", "sum"),
@@ -1867,12 +1914,23 @@ def _build_cursos_tab(co_ies, uf, mun, ano):
     return df_tab, _TEXT_COLS, _NUMERIC_COLS
 
 
-def _render_cursos_table(df_tab, _TEXT_COLS, _NUMERIC_COLS):
+def _render_cursos_table(df_tab, _TEXT_COLS, _NUMERIC_COLS, sort_state=None):
     """Renderiza a tabela de cursos com coluna '#', scroll e linha de totais."""
     if df_tab.empty:
         return html.P(
             "Nenhum curso encontrado para os filtros selecionados.",
             style={"color": "#718096", "fontStyle": "italic", "margin": "12px 0"},
+        )
+
+    sort_state = sort_state or {"col": "Matrículas", "asc": False}
+    sort_col = sort_state.get("col", "Matrículas")
+    sort_asc = sort_state.get("asc", False)
+    if sort_col in df_tab.columns:
+        df_tab = df_tab.sort_values(
+            by=sort_col,
+            ascending=sort_asc,
+            kind="mergesort",
+            na_position="last",
         )
 
     total_row = {col: df_tab[col].sum() for col in _NUMERIC_COLS}
@@ -1895,8 +1953,38 @@ def _render_cursos_table(df_tab, _TEXT_COLS, _NUMERIC_COLS):
     }
     _th_right = {**_th_style, "textAlign": "right"}
 
+    def _sort_header(col):
+        is_active = sort_col == col
+        indicator = "▲" if is_active and sort_asc else "▼" if is_active else "↕"
+        return html.Th(
+            html.Div([
+                html.Span(col),
+                html.Span(indicator, style={
+                    "fontSize": 10,
+                    "color": COR_AZUL if is_active else "#a0aec0",
+                    "marginLeft": 6,
+                    "lineHeight": 1,
+                }),
+            ], style={
+                "display": "inline-flex",
+                "alignItems": "center",
+                "justifyContent": "space-between",
+                "width": "100%",
+            }),
+            id={"type": "th-sort-cursos", "col": col},
+            n_clicks=0,
+            title="Clique para ordenar; clique novamente para inverter a ordem",
+            style={
+                **(_th_right if col in _NUMERIC_COLS else _th_style),
+                "cursor": "pointer",
+                "userSelect": "none",
+                "color": COR_AZUL if is_active else "#4a5568",
+            },
+        )
+
     header_cells = [
         html.Th(col, style=_th_right if col in _NUMERIC_COLS else _th_style)
+        if col == "#" else _sort_header(col)
         for col in _all_cols
     ]
     table_header = html.Tr(header_cells)
@@ -1952,6 +2040,31 @@ def _apply_course_filters(df_tab, busca, modal, grau, area, _TEXT_COLS, _NUMERIC
     return df
 
 
+# ── Ordenação reativa dos cabeçalhos da Tabela_Cursos ────────────────────────
+@app.callback(
+    Output("mun-cursos-sort-state", "data"),
+    Input({"type": "th-sort-cursos", "col": dash.ALL}, "n_clicks"),
+    State("mun-cursos-sort-state", "data"),
+    prevent_initial_call=True,
+)
+def atualizar_sort_state_cursos(n_clicks_list, sort_state):
+    ctx = callback_context
+    if not ctx.triggered or not any(n for n in n_clicks_list if n):
+        return dash.no_update
+
+    try:
+        clicked_col = json.loads(ctx.triggered[0]["prop_id"].split(".")[0]).get("col")
+    except Exception:
+        return dash.no_update
+
+    if not clicked_col:
+        return dash.no_update
+    sort_state = sort_state or {"col": "Matrículas", "asc": False}
+    if sort_state.get("col") == clicked_col:
+        return {"col": clicked_col, "asc": not sort_state.get("asc", False)}
+    return {"col": clicked_col, "asc": True}
+
+
 # ── Task 11.2: Callback — filtragem reativa da Tabela_Cursos ─────────────────
 @app.callback(
     Output("mun-tabela-cursos-container", "children"),
@@ -1963,9 +2076,10 @@ def _apply_course_filters(df_tab, busca, modal, grau, area, _TEXT_COLS, _NUMERIC
     State("mun-uf",           "value"),
     State("mun-municipio",    "value"),
     State("mun-ano",          "value"),
+    Input("mun-cursos-sort-state", "data"),
     prevent_initial_call=True,
 )
-def filtrar_tabela_cursos(busca, modal, grau, area, co_ies, uf, mun, ano):
+def filtrar_tabela_cursos(busca, modal, grau, area, co_ies, uf, mun, ano, sort_state):
     if not co_ies:
         return dash.no_update
 
@@ -1973,7 +2087,7 @@ def filtrar_tabela_cursos(busca, modal, grau, area, co_ies, uf, mun, ano):
 
     df_filtered = _apply_course_filters(df_tab, busca, modal, grau, area, _TEXT_COLS, _NUMERIC_COLS)
 
-    return _render_cursos_table(df_filtered, _TEXT_COLS, _NUMERIC_COLS)
+    return _render_cursos_table(df_filtered, _TEXT_COLS, _NUMERIC_COLS, sort_state)
 
 
 # ── Task 11.2 / Task 12: Callback — exportação CSV / Excel da Tabela_Cursos ──
