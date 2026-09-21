@@ -23,6 +23,7 @@ import os
 import sys
 import time
 import argparse
+import re
 from pathlib import Path
 
 import trino.dbapi
@@ -64,13 +65,14 @@ def get_conn():
 
 def run_sql_file(conn, filepath: Path):
     """Executa cada statement (separado por ;) do arquivo SQL."""
-    sql = filepath.read_text()
+    sql = filepath.read_text(encoding="utf-8-sig")
+    # Remove comentários antes de separar os statements. Isso evita que uma
+    # linha de comentário no cabeçalho seja concatenada ao primeiro comando.
+    sql = re.sub(r"(?m)^\s*--[^\r\n]*(?:\r?\n|$)", "", sql)
     statements = [s.strip() for s in sql.split(";") if s.strip()]
 
     for stmt in statements:
-        # Remove linhas de comentário puro
-        lines = [l for l in stmt.splitlines() if not l.strip().startswith("--")]
-        clean = "\n".join(lines).strip()
+        clean = stmt.strip()
         if not clean:
             continue
 

@@ -33,6 +33,12 @@ spec:
               value: seaweedfs
             - name: TRINO_SCHEMA
               value: raw
+            - name: EDUC_CACHE_DIR
+              value: /var/cache/educacao-superior
+            - name: TBL_CURSOS
+              value: gold.gold.educacao_superior_cursos
+            - name: TBL_IES
+              value: gold.gold.educacao_superior_ies
           livenessProbe:
             httpGet:
               path: /educacao-superior/

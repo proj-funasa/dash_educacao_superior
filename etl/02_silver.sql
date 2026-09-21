@@ -18,7 +18,7 @@ DROP TABLE IF EXISTS silver.silver.educacao_superior_cursos;
 
 CREATE TABLE silver.silver.educacao_superior_cursos
 WITH (
-    external_location = 's3a://funasa/silver/educacao_superior_cursos',
+    external_location = 's3a://funasa/silver/educacao_superior_cursos_v2',
     format = 'PARQUET'
 )
 AS
@@ -49,17 +49,42 @@ SELECT
     COALESCE(qt_ing, 0)            AS qt_ing,
     COALESCE(qt_ing_fem, 0)        AS qt_ing_fem,
     COALESCE(qt_ing_masc, 0)       AS qt_ing_masc,
+    COALESCE(qt_ing_vestibular, 0) AS qt_ing_vestibular,
+    COALESCE(qt_ing_enem, 0)       AS qt_ing_enem,
+    COALESCE(qt_ing_avaliacao_seriada, 0) AS qt_ing_avaliacao_seriada,
+    COALESCE(qt_ing_selecao_simplifica, 0) AS qt_ing_selecao_simplifica,
+    COALESCE(qt_ing_egr, 0)        AS qt_ing_egr,
+    COALESCE(qt_ing_outro_tipo_selecao, 0) AS qt_ing_outro_tipo_selecao,
+    COALESCE(qt_ing_proc_seletivo, 0) AS qt_ing_proc_seletivo,
+    COALESCE(qt_ing_vg_remanesc, 0) AS qt_ing_vg_remanesc,
+    COALESCE(qt_ing_vg_prog_especial, 0) AS qt_ing_vg_prog_especial,
+    COALESCE(qt_ing_outra_forma, 0) AS qt_ing_outra_forma,
     COALESCE(qt_mat, 0)            AS qt_mat,
     COALESCE(qt_mat_fem, 0)        AS qt_mat_fem,
     COALESCE(qt_mat_masc, 0)       AS qt_mat_masc,
     COALESCE(qt_conc, 0)           AS qt_conc,
     COALESCE(qt_conc_fem, 0)       AS qt_conc_fem,
     COALESCE(qt_conc_masc, 0)      AS qt_conc_masc,
-    COALESCE(qt_ing_enem, 0)       AS qt_ing_enem,
     COALESCE(qt_ing_financ, 0)     AS qt_ing_financ,
+    COALESCE(qt_ing_financ_reemb, 0) AS qt_ing_financ_reemb,
+    COALESCE(qt_ing_fies, 0)       AS qt_ing_fies,
+    COALESCE(qt_ing_rpfies, 0)     AS qt_ing_rpfies,
+    COALESCE(qt_ing_financ_reemb_outros, 0) AS qt_ing_financ_reemb_outros,
+    COALESCE(qt_ing_financ_nreemb, 0) AS qt_ing_financ_nreemb,
+    COALESCE(qt_ing_prounii, 0)    AS qt_ing_prounii,
+    COALESCE(qt_ing_prounip, 0)    AS qt_ing_prounip,
+    COALESCE(qt_ing_nrpfies, 0)    AS qt_ing_nrpfies,
+    COALESCE(qt_ing_financ_nreemb_outros, 0) AS qt_ing_financ_nreemb_outros,
+    COALESCE(qt_mat_financ, 0)     AS qt_mat_financ,
+    COALESCE(qt_mat_financ_reemb, 0) AS qt_mat_financ_reemb,
+    COALESCE(qt_mat_fies, 0)       AS qt_mat_fies,
+    COALESCE(qt_mat_rpfies, 0)     AS qt_mat_rpfies,
+    COALESCE(qt_mat_financ_reemb_outros, 0) AS qt_mat_financ_reemb_outros,
+    COALESCE(qt_mat_financ_nreemb, 0) AS qt_mat_financ_nreemb,
     COALESCE(qt_mat_prounii, 0)    AS qt_mat_prounii,
     COALESCE(qt_mat_prounip, 0)    AS qt_mat_prounip,
-    COALESCE(qt_mat_fies, 0)       AS qt_mat_fies,
+    COALESCE(qt_mat_nrpfies, 0)    AS qt_mat_nrpfies,
+    COALESCE(qt_mat_financ_nreemb_outros, 0) AS qt_mat_financ_nreemb_outros,
     COALESCE(qt_aluno_deficiente, 0) AS qt_aluno_deficiente,
     COALESCE(qt_mat_deficiente, 0)   AS qt_mat_deficiente
 FROM bronze.bronze.educacao_superior_cursos;
@@ -68,7 +93,7 @@ DROP TABLE IF EXISTS silver.silver.educacao_superior_ies;
 
 CREATE TABLE silver.silver.educacao_superior_ies
 WITH (
-    external_location = 's3a://funasa/silver/educacao_superior_ies',
+    external_location = 's3a://funasa/silver/educacao_superior_ies_v2',
     format = 'PARQUET'
 )
 AS
@@ -91,6 +116,7 @@ SELECT
     COALESCE(qt_doc_exe, 0)     AS qt_doc_exe,
     COALESCE(qt_doc_ex_dout, 0) AS qt_doc_ex_dout,
     COALESCE(qt_doc_ex_mest, 0) AS qt_doc_ex_mest,
+    COALESCE(qt_doc_ex_esp, 0) AS qt_doc_ex_esp,
     COALESCE(qt_doc_ex_femi, 0) AS qt_doc_ex_femi,
     COALESCE(qt_doc_ex_masc, 0) AS qt_doc_ex_masc,
     COALESCE(qt_tec_total, 0)   AS qt_tec_total

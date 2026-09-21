@@ -8,6 +8,7 @@ Fonte: public.inep_educacao_superior_cursos  e  public.inep_educacao_superior_ie
 import os
 import math
 import json
+import pickle
 
 import dash
 from dash import Input, Output, State, dcc, html, callback_context
@@ -40,9 +41,8 @@ TRINO_PASSWORD = os.getenv("TRINO_PASSWORD")  # sem default — nunca hardcodear
 TRINO_CATALOG  = os.getenv("TRINO_CATALOG",   "seaweedfs")
 TRINO_SCHEMA   = os.getenv("TRINO_SCHEMA",    "raw")
 
-# Tabelas de origem (fully-qualified). Padrão: camada gold do data lake
-# (populada pela DAG etl_educacao_superior / etl/*.sql). Sobrescreva via env
-# para ler outra camada, ex.: TBL_CURSOS=seaweedfs.raw.inep_educacao_superior_cursos.
+# Tabelas principais disponíveis no Trino (fully-qualified). O dashboard
+# consulta estas tabelas diretamente, sem depender das projeções do ETL.
 TBL_CURSOS = os.getenv("TBL_CURSOS", "seaweedfs.raw.inep_educacao_superior_cursos")
 TBL_IES    = os.getenv("TBL_IES",    "seaweedfs.raw.inep_educacao_superior_ies")
 
@@ -87,10 +87,18 @@ COLS_CURSOS = [
     "tp_grau_academico", "tp_modalidade_ensino", "tp_nivel_academico",
     "qt_curso", "qt_vg_total", "qt_inscrito_total",
     "qt_ing", "qt_ing_fem", "qt_ing_masc",
+    "qt_ing_vestibular", "qt_ing_enem", "qt_ing_avaliacao_seriada",
+    "qt_ing_selecao_simplifica", "qt_ing_egr", "qt_ing_outro_tipo_selecao",
+    "qt_ing_proc_seletivo", "qt_ing_vg_remanesc", "qt_ing_vg_prog_especial",
+    "qt_ing_outra_forma",
     "qt_mat", "qt_mat_fem", "qt_mat_masc",
     "qt_conc", "qt_conc_fem", "qt_conc_masc",
-    "qt_ing_enem", "qt_ing_financ",
-    "qt_mat_prounii", "qt_mat_prounip", "qt_mat_fies",
+    "qt_ing_financ", "qt_ing_financ_reemb", "qt_ing_fies", "qt_ing_rpfies",
+    "qt_ing_financ_reemb_outros", "qt_ing_financ_nreemb", "qt_ing_prounii",
+    "qt_ing_prounip", "qt_ing_nrpfies", "qt_ing_financ_nreemb_outros",
+    "qt_mat_financ", "qt_mat_financ_reemb", "qt_mat_fies", "qt_mat_rpfies",
+    "qt_mat_financ_reemb_outros", "qt_mat_financ_nreemb", "qt_mat_prounii",
+    "qt_mat_prounip", "qt_mat_nrpfies", "qt_mat_financ_nreemb_outros",
     "qt_aluno_deficiente", "qt_mat_deficiente",
 ]
 
@@ -111,26 +119,55 @@ import time as _time
 _anos_df = _trino_query(f"SELECT DISTINCT nu_ano_censo FROM {TBL_CURSOS} ORDER BY nu_ano_censo")
 ANOS_DISPONIVEIS = sorted(_anos_df["nu_ano_censo"].astype(int).tolist())
 ANO_CENSO = ANOS_DISPONIVEIS[-1]
-print(f"[EDUC] Anos disponíveis: {ANOS_DISPONIVEIS} | Padrão: {ANO_CENSO}", flush=True)
+ANOS_CARREGADOS = ANOS_DISPONIVEIS
+_CACHE_DIR = os.getenv(
+    "EDUC_CACHE_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache"),
+)
+_RECARREGAR_CACHE = os.getenv("EDUC_RECARREGAR_CACHE", "0").lower() in {
+    "1", "true", "sim", "yes"
+}
 
 _COLS_CURSOS_STR = ", ".join(COLS_CURSOS)
 _COLS_IES_STR    = ", ".join(COLS_IES)
 
-# Carrega todos os anos — necessário para filtros globais, panorama, cursos e mapa
-# A aba "Visão por Município" faz queries diretas ao Trino por município/ano
-print(f"[EDUC] Carregando cursos (todos os anos)...", flush=True)
-_t0 = _time.time()
-df_cursos = _trino_query(f"SELECT {_COLS_CURSOS_STR} FROM {TBL_CURSOS}")
-print(f"[EDUC] Cursos carregados: {len(df_cursos)} linhas em {_time.time()-_t0:.0f}s", flush=True)
+def _carregar_com_cache(nome, tabela, colunas):
+    """Carrega todos os anos e evita repetir a leitura pesada do Trino."""
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    caminho = os.path.join(_CACHE_DIR, f"{nome}.pkl")
+    metadados = {
+        "tabela": tabela,
+        "colunas": colunas,
+        "anos": ANOS_CARREGADOS,
+    }
+    if os.path.exists(caminho) and not _RECARREGAR_CACHE:
+        try:
+            with open(caminho, "rb") as arquivo:
+                cache = pickle.load(arquivo)
+            if cache.get("metadados") == metadados:
+                print(f"[EDUC] {nome} carregado do cache: {len(cache['dados'])} linhas", flush=True)
+                return cache["dados"]
+        except (OSError, EOFError, KeyError, pickle.PickleError, ValueError):
+            pass
 
-print(f"[EDUC] Carregando IES (todos os anos)...", flush=True)
-_t0 = _time.time()
-df_ies = _trino_query(f"SELECT {_COLS_IES_STR} FROM {TBL_IES}")
-print(f"[EDUC] IES carregadas: {len(df_ies)} linhas em {_time.time()-_t0:.0f}s", flush=True)
+    filtro_anos = ", ".join(str(ano) for ano in ANOS_CARREGADOS)
+    print(f"[EDUC] Consultando {nome} no Trino...", flush=True)
+    inicio = _time.time()
+    dados = _trino_query(
+        f"SELECT {', '.join(colunas)} FROM {tabela} "
+        f"WHERE nu_ano_censo IN ({filtro_anos})"
+    )
+    with open(caminho, "wb") as arquivo:
+        pickle.dump({"metadados": metadados, "dados": dados}, arquivo, protocol=pickle.HIGHEST_PROTOCOL)
+    print(f"[EDUC] {nome} carregado: {len(dados)} linhas em {_time.time()-inicio:.0f}s", flush=True)
+    return dados
+
+
+df_cursos = _carregar_com_cache("cursos", TBL_CURSOS, COLS_CURSOS)
+df_ies = _carregar_com_cache("ies", TBL_IES, COLS_IES)
 print(f"[EDUC] Cursos: {len(df_cursos)} linhas | IES: {len(df_ies)} linhas", flush=True)
 
 # ── GeoJSON dos estados brasileiros ──────────────────────────────────────────
-_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
 _ESTADOS_GEOJSON_CACHE = os.path.join(_CACHE_DIR, "brazil_states.geojson")
 _ESTADOS_GEOJSON_URL = (
     "https://raw.githubusercontent.com/codeforamerica/"
@@ -251,10 +288,18 @@ _df_coords = _carregar_coordenadas_municipios()
 # ── Limpeza / tratamento ──────────────────────────────────────────────────────
 for col in ["qt_curso","qt_vg_total","qt_inscrito_total",
             "qt_ing","qt_ing_fem","qt_ing_masc",
+            "qt_ing_vestibular","qt_ing_enem","qt_ing_avaliacao_seriada",
+            "qt_ing_selecao_simplifica","qt_ing_egr","qt_ing_outro_tipo_selecao",
+            "qt_ing_proc_seletivo","qt_ing_vg_remanesc","qt_ing_vg_prog_especial",
+            "qt_ing_outra_forma",
             "qt_mat","qt_mat_fem","qt_mat_masc",
             "qt_conc","qt_conc_fem","qt_conc_masc",
-            "qt_ing_enem","qt_ing_financ",
-            "qt_mat_prounii","qt_mat_prounip","qt_mat_fies",
+            "qt_ing_financ","qt_ing_financ_reemb","qt_ing_fies","qt_ing_rpfies",
+            "qt_ing_financ_reemb_outros","qt_ing_financ_nreemb","qt_ing_prounii",
+            "qt_ing_prounip","qt_ing_nrpfies","qt_ing_financ_nreemb_outros",
+            "qt_mat_financ","qt_mat_financ_reemb","qt_mat_fies","qt_mat_rpfies",
+            "qt_mat_financ_reemb_outros","qt_mat_financ_nreemb","qt_mat_prounii",
+            "qt_mat_prounip","qt_mat_nrpfies","qt_mat_financ_nreemb_outros",
             "qt_aluno_deficiente","qt_mat_deficiente"]:
     df_cursos[col] = pd.to_numeric(df_cursos[col], errors="coerce").fillna(0)
 
@@ -470,6 +515,29 @@ def _aplicar_filtros_ies(regiao, uf, org, rede, ano=None):
     if rede and rede != "Todas":
         df = df[df["tp_rede"] == rede]
     return df
+    
+def _classificar_modalidade(valor):
+    """Normaliza os rótulos do INEP para os dois filtros exibidos no painel."""
+    modalidade = str(valor).strip().lower()
+    if "ead" in modalidade or "dist" in modalidade:
+        return "EAD"
+    if "pres" in modalidade:
+        return "Presencial"
+    return None
+
+
+ACESSO_INGRESSO = {
+    "Vestibular": "qt_ing_vestibular",
+    "ENEM": "qt_ing_enem",
+    "Avaliação seriada": "qt_ing_avaliacao_seriada",
+    "Seleção simplificada": "qt_ing_selecao_simplifica",
+    "Egresso": "qt_ing_egr",
+    "Outro tipo de seleção": "qt_ing_outro_tipo_selecao",
+    "Processo seletivo": "qt_ing_proc_seletivo",
+    "Vaga remanescente": "qt_ing_vg_remanesc",
+    "Vaga de programa especial": "qt_ing_vg_prog_especial",
+    "Outra forma": "qt_ing_outra_forma",
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -597,7 +665,7 @@ def _aba_cursos_layout():
             html.Div([
                 _titulo("Filtros"),
                 html.Div([
-                    _filtro_label("Ano",       "f-ano",       sorted(ANOS_DISPONIVEIS, reverse=True), ANO_CENSO, 100),
+                    _filtro_label("Ano",       "f-ano",       sorted(ANOS_CARREGADOS, reverse=True), ANO_CENSO, 100),
                     _filtro_label("Região",    "f-regiao",    REGIOES,     "Todas", 170),
                     _filtro_label("UF",        "f-uf",        UFS,         "Todas", 130),
                     _filtro_label("Modalidade","f-modal",     MODALIDADES, "Todas", 190),
@@ -633,7 +701,7 @@ def _aba_cursos_layout():
                 html.Div(id="graf-genero"),
             ]),
             _card([
-                _titulo("Acesso e Financiamento Estudantil"),
+                _titulo("Acesso Estudantil"),
                 html.Div(id="graf-financ"),
             ]),
         ], style={"display": "flex", "gap": 12, "marginBottom": 12}),
@@ -664,7 +732,7 @@ def _aba_mapa_layout():
                                   ["Matrículas", "Ingressantes", "Concluintes",
                                    "Cursos", "IES", "Docentes (IES)"],
                                   "Matrículas", 210),
-                    _filtro_label("Ano",        "mapa-ano",       sorted(ANOS_DISPONIVEIS, reverse=True), ANO_CENSO, 100),
+                    _filtro_label("Ano",        "mapa-ano",       sorted(ANOS_CARREGADOS, reverse=True), ANO_CENSO, 100),
                     _filtro_label("Modalidade", "mapa-modal",     MODALIDADES, "Todas", 190),
                     _filtro_label("Rede",        "mapa-rede",      REDES,       "Todas", 140),
                     _filtro_label("Grau",        "mapa-grau",      GRAUS,       "Todos", 180),
@@ -711,7 +779,7 @@ def _aba_municipio_layout():
         _card([
             _titulo("Filtros de Pesquisa por Município"),
             html.Div([
-                _filtro_label("Ano", "mun-ano", sorted(ANOS_DISPONIVEIS, reverse=True), ANO_CENSO, 110),
+                _filtro_label("Ano", "mun-ano", sorted(ANOS_CARREGADOS, reverse=True), ANO_CENSO, 110),
                 _filtro_label("Estado (UF)", "mun-uf", ufs_validas, uf_inicial, 120),
                 # Task 3.1 — clearable=True
                 html.Div([
@@ -749,7 +817,7 @@ def _aba_mapa_municipio_layout():
         _card([
             _titulo("Filtros do Mapa"),
             html.Div([
-                _filtro_label("Ano",          "mun-mapa-ano",       sorted(ANOS_DISPONIVEIS, reverse=True), ANO_CENSO, 100),
+                _filtro_label("Ano",          "mun-mapa-ano",       sorted(ANOS_CARREGADOS, reverse=True), ANO_CENSO, 100),
                 _filtro_label("Estado (UF)",  "mun-mapa-uf",        ufs_mapa, "Todas (Brasil)", 170),
                 _filtro_label("Indicador",    "mun-mapa-indicador", ["Matrículas", "Ingressantes", "Concluintes", "IES", "Cursos"], "Matrículas", 190),
             ], style={"display": "flex", "gap": 12, "flexWrap": "wrap", "alignItems": "flex-end"}),
@@ -1007,19 +1075,37 @@ def atualizar_cursos(ano, regiao, uf, modal, grau, rede):
     ))
     fig_gen.update_layout(margin=dict(l=0, r=0, t=10, b=10), height=320)
 
-    # Gráfico: Financiamento / Bolsas
-    fies = int(df["qt_mat_fies"].sum())
-    prouni_i = int(df["qt_mat_prounii"].sum())
-    prouni_p = int(df["qt_mat_prounip"].sum())
-    enem = int(df["qt_ing_enem"].sum())
+    # Gráfico: principais formas de acesso. As categorias menores são agrupadas.
+    acesso_principal = [
+        ("Vestibular", "qt_ing_vestibular"),
+        ("ENEM", "qt_ing_enem"),
+        ("Seleção simplificada", "qt_ing_selecao_simplifica"),
+        ("Vaga remanescente", "qt_ing_vg_remanesc"),
+        ("Avaliação seriada", "qt_ing_avaliacao_seriada"),
+    ]
+    colunas_acesso_principal = {coluna for _, coluna in acesso_principal}
+    outras_formas_acesso = [
+        coluna for coluna in ACESSO_INGRESSO.values()
+        if coluna not in colunas_acesso_principal
+    ]
+    acesso_principal.append(("Outras formas", outras_formas_acesso))
+
+    valores_acesso = []
+    nomes_acesso = []
+    for nome, coluna in acesso_principal:
+        nomes_acesso.append(nome)
+        if isinstance(coluna, list):
+            valores_acesso.append(int(df[coluna].sum().sum()))
+        else:
+            valores_acesso.append(int(df[coluna].sum()))
 
     fig_fin = go.Figure(go.Bar(
-        x=["Ingr. ENEM", "FIES", "ProUni Integral", "ProUni Parcial"],
-        y=[enem, fies, prouni_i, prouni_p],
-        marker_color=[COR_AZUL, COR_VERDE, COR_ROXO, COR_LARANJA],
+        x=nomes_acesso,
+        y=valores_acesso,
+        marker_color=[COR_AZUL, COR_VERDE, COR_ROXO, COR_LARANJA, "#805AD5", "#718096"],
         hovertemplate="<b>%{x}</b><br>Alunos: %{y:,.0f}<extra></extra>",
     ))
-    fig_fin.update_layout(**_layout_base(), height=320, yaxis_title="Alunos")
+    fig_fin.update_layout(**_layout_base(), height=360, yaxis_title="Ingressantes")
 
     return kpis, dcc.Graph(figure=fig_area), dcc.Graph(figure=fig_grau), dcc.Graph(figure=fig_gen), dcc.Graph(figure=fig_fin)
 
@@ -1040,27 +1126,34 @@ def atualizar_tabela_cursos(ano, regiao, uf, modal, grau, rede, area):
     if area and area != "Todas":
         df = df[df["no_cine_area_geral"] == area]
 
+    df = df.assign(
+        _mat_presencial=df["qt_mat"].where(
+            df["tp_modalidade_ensino"].map(_classificar_modalidade) == "Presencial", 0
+        ),
+        _mat_ead=df["qt_mat"].where(
+            df["tp_modalidade_ensino"].map(_classificar_modalidade) == "EAD", 0
+        ),
+    )
     top = (
         df.groupby("no_curso")
-          .agg({
-              "qt_mat": "sum",
-              "qt_ing": "sum",
-              "qt_conc": "sum",
-              "co_curso": "nunique",
-          })
+          .agg(
+              Ingressantes=("qt_ing", "sum"),
+              Concluintes=("qt_conc", "sum"),
+              Presencial=("_mat_presencial", "sum"),
+              EAD=("_mat_ead", "sum"),
+              Matrículas=("qt_mat", "sum"),
+              **{"Nº Turmas/Ofertados": ("co_curso", "nunique")},
+          )
           .reset_index()
-          .rename(columns={
-              "no_curso": "Nome do Curso",
-              "qt_mat": "Matrículas",
-              "qt_ing": "Ingressantes",
-              "qt_conc": "Concluintes",
-              "co_curso": "Nº Turmas/Ofertados",
-          })
+          .rename(columns={"no_curso": "Nome do Curso"})
           .sort_values(by="Matrículas", ascending=False)
           .head(15)
     )
 
-    for c in ["Matrículas", "Ingressantes", "Concluintes", "Nº Turmas/Ofertados"]:
+    ordered = ["Nome do Curso", "Ingressantes", "Concluintes", "Presencial", "EAD", "Total de Matrículas", "Nº Turmas/Ofertados"]
+    top = top.rename(columns={"Matrículas": "Total de Matrículas"})
+    top = top[ordered]
+    for c in ordered[1:]:
         top[c] = top[c].apply(_fmt_mil)
 
     return _tabela_html(top)
@@ -1088,22 +1181,35 @@ def atualizar_mapa(indicador, ano, modal, rede, grau):
         df = df[df["tp_grau_academico"] == grau]
 
     df_ies_f = df_ies[df_ies["nu_ano_censo"].astype(int) == int(ano)]
-    if rede != "Todas":
-        df_ies_f = df_ies_f[df_ies_f["tp_rede"] == rede]
+    # O campo tp_rede pode ter tipo/representação diferente entre cursos e IES.
+    # Como df já foi filtrado pela rede, usar seus códigos evita zerar docentes.
+    df_ies_f = df_ies_f[df_ies_f["co_ies"].astype(str).isin(set(df["co_ies"].astype(str)))]
 
-    # Mapear indicador selecionado para coluna correspondente
-    if indicador == "Matrículas":
-        agrup = df.groupby("sg_uf")["qt_mat"].sum().reset_index().rename(columns={"qt_mat": "Valor"})
-    elif indicador == "Ingressantes":
-        agrup = df.groupby("sg_uf")["qt_ing"].sum().reset_index().rename(columns={"qt_ing": "Valor"})
-    elif indicador == "Concluintes":
-        agrup = df.groupby("sg_uf")["qt_conc"].sum().reset_index().rename(columns={"qt_conc": "Valor"})
-    elif indicador == "Cursos":
-        agrup = df.groupby("sg_uf")["co_curso"].nunique().reset_index().rename(columns={"co_curso": "Valor"})
-    elif indicador == "IES":
-        agrup = df_ies_f.groupby("sg_uf_ies")["co_ies"].nunique().reset_index().rename(columns={"sg_uf_ies": "sg_uf", "co_ies": "Valor"})
-    else:  # Docentes
-        agrup = df_ies_f.groupby("sg_uf_ies")["qt_doc_exe"].sum().reset_index().rename(columns={"sg_uf_ies": "sg_uf", "qt_doc_exe": "Valor"})
+    df = df.assign(
+        _mat_presencial=df["qt_mat"].where(
+            df["tp_modalidade_ensino"].map(_classificar_modalidade) == "Presencial", 0
+        ),
+        _mat_ead=df["qt_mat"].where(
+            df["tp_modalidade_ensino"].map(_classificar_modalidade) == "EAD", 0
+        ),
+    )
+    metricas_uf = df.groupby("sg_uf").agg(
+        Ingressantes=("qt_ing", "sum"),
+        Concluintes=("qt_conc", "sum"),
+        Presencial=("_mat_presencial", "sum"),
+        EAD=("_mat_ead", "sum"),
+        **{"Total de Matrículas": ("qt_mat", "sum")},
+        Cursos=("co_curso", "nunique"),
+    ).reset_index()
+    ies_uf = df_ies_f.groupby("sg_uf_ies")["co_ies"].nunique().reset_index()
+    ies_uf.columns = ["sg_uf", "IES"]
+    doc_uf = df_ies_f.groupby("sg_uf_ies")["qt_doc_exe"].sum().reset_index()
+    doc_uf.columns = ["sg_uf", "Docentes (IES)"]
+    metricas_uf = metricas_uf.merge(ies_uf, on="sg_uf", how="left").merge(doc_uf, on="sg_uf", how="left").fillna(0)
+    metricas_uf["IES"] = metricas_uf["IES"].astype(int)
+    metricas_uf["Docentes (IES)"] = metricas_uf["Docentes (IES)"].astype(int)
+    coluna_indicador = "Total de Matrículas" if indicador == "Matrículas" else indicador
+    agrup = metricas_uf[["sg_uf", coluna_indicador]].rename(columns={coluna_indicador: "Valor"})
 
     fig_mapa = go.Figure(go.Choroplethmap(
         geojson=geojson_estados,
@@ -1134,13 +1240,16 @@ def atualizar_mapa(indicador, ano, modal, rede, grau):
     )
 
     # Tabela Ranking
-    rk = agrup.sort_values("Valor", ascending=False).reset_index(drop=True)
+    rk = metricas_uf.sort_values(coluna_indicador, ascending=False).reset_index(drop=True)
     rk.index += 1
     rk.reset_index(inplace=True)
-    rk.columns = ["Posição", "UF", indicador]
-    rk[indicador] = rk[indicador].apply(_fmt_mil)
+    rk = rk.rename(columns={"index": "Posição", "sg_uf": "UF"})
+    rk = rk[["Posição", "UF", "Cursos", "IES", "Presencial", "EAD", "Total de Matrículas", "Ingressantes", "Concluintes", "Docentes (IES)"]]
+    for coluna in rk.columns[2:]:
+        rk[coluna] = rk[coluna].apply(_fmt_mil)
 
-    return dcc.Graph(figure=fig_mapa), _tabela_html(rk)
+    contexto = f"Filtros respondidos: Ano {ano} · Modalidade {modal} · Rede {rede} · Grau {grau}. Ranking ordenado por {indicador}."
+    return dcc.Graph(figure=fig_mapa), html.Div([_nota(contexto), _tabela_html(rk)])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1416,20 +1525,18 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
     ano = int(ano)
     filtro_mun_c = f"AND no_municipio = '{mun}'" if mun != "TODOS" else ""
     filtro_mun_i = f"AND no_municipio_ies = '{mun}'" if mun != "TODOS" else ""
-    filtro_modal = f"AND tp_modalidade_ensino = '{modalidade}'" if modalidade and modalidade != "Todas" else ""
 
     df_c = _trino_query(f"""
         SELECT {_COLS_CURSOS_STR}
         FROM {TBL_CURSOS}
-        WHERE nu_ano_censo = '{ano}'
+        WHERE nu_ano_censo = {ano}
           AND sg_uf = '{uf}'
           {filtro_mun_c}
-          {filtro_modal}
     """)
     df_i = _trino_query(f"""
         SELECT {_COLS_IES_STR}
         FROM {TBL_IES}
-        WHERE nu_ano_censo = '{ano}'
+        WHERE nu_ano_censo = {ano}
           AND sg_uf_ies = '{uf}'
           {filtro_mun_i}
     """)
@@ -1437,6 +1544,13 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
                 "qt_doc_ex_femi","qt_doc_ex_masc","qt_tec_total"]:
         if col in df_i.columns:
             df_i[col] = pd.to_numeric(df_i[col], errors="coerce").fillna(0)
+    
+        # O INEP usa rótulos como "A Distância" em alguns anos, não apenas "EAD".
+        # Filtrar após a leitura mantém o filtro compatível com todas as variações.
+        if modalidade and modalidade != "Todas":
+            df_c = df_c[df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == modalidade]
+            ies_com_cursos = set(df_c["co_ies"].astype(str))
+            df_i = df_i[df_i["co_ies"].astype(str).isin(ies_com_cursos)]
 
     if categoria and categoria != "Todas":
         co_ies_cat = set(df_i[df_i["tp_categoria_administrativa"].apply(_decode_categoria) == categoria]["co_ies"].astype(str).tolist())
@@ -1633,7 +1747,7 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     df_c = _trino_query(f"""
         SELECT {_COLS_CURSOS_STR}
         FROM {TBL_CURSOS}
-        WHERE nu_ano_censo = '{ano}'
+        WHERE nu_ano_censo = {ano}
           AND co_ies = {co_ies}
           AND sg_uf = '{uf}'
           {filtro_mun}
@@ -1641,7 +1755,7 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     df_i = _trino_query(f"""
         SELECT {_COLS_IES_STR}
         FROM {TBL_IES}
-        WHERE nu_ano_censo = '{ano}'
+        WHERE nu_ano_censo = {ano}
           AND co_ies = {co_ies}
     """)
     for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest","qt_doc_ex_esp",
@@ -1699,25 +1813,48 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     fies   = int(df_c["qt_mat_fies"].sum())
     prouni = int(df_c["qt_mat_prounii"].sum() + df_c["qt_mat_prounip"].sum())
     enem   = int(df_c["qt_ing_enem"].sum())
+    acesso_totais = {
+        nome: int(df_c[coluna].sum())
+        for nome, coluna in ACESSO_INGRESSO.items()
+    }
+    acesso_detalhado = sum(acesso_totais.values())
+    diferenca_acesso = ing_total - acesso_detalhado
 
     # Tabela de Cursos — agrupa por nome+modalidade+grau para consolidar autorizações múltiplas
-    _NUMERIC_COLS = ["Ingressantes", "Matrículas", "Concluintes",
-                     "FIES", "ProUni", "Mat. Fem.", "Mat. Masc.", "ENEM", "Deficientes"]
+    _NUMERIC_COLS = [
+        "Matrículas", "Ingressantes", "Concluintes", "Matrículas Masculinas", "Matrículas Femininas",
+        "ENEM", "Outras formas", "FIES", "ProUni Integral", "ProUni Parcial",
+        "Mat. Presencial", "Mat. EAD", "PCD",
+    ]
     _TEXT_COLS    = ["Curso", "Modalidade", "Grau", "Área"]
 
+    df_c = df_c.assign(
+        _modalidade_resumo=df_c["tp_modalidade_ensino"].map(_classificar_modalidade),
+        _outras_formas=(df_c["qt_ing"] - df_c["qt_ing_enem"]).clip(lower=0),
+        _mat_presencial=df_c["qt_mat"].where(
+            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "Presencial", 0
+        ),
+        _mat_ead=df_c["qt_mat"].where(
+            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "EAD", 0
+        ),
+    )
     df_cursos_tab = (
         df_c.groupby(["no_curso", "tp_modalidade_ensino", "tp_grau_academico",
                       "no_cine_area_geral"], dropna=False)
         .agg(
-            Ingressantes=("qt_ing", "sum"),
             Matrículas=("qt_mat", "sum"),
+            Ingressantes=("qt_ing", "sum"),
             Concluintes=("qt_conc", "sum"),
-            FIES=("qt_mat_fies", "sum"),
-            ProUni=("qt_mat_prounii", "sum"),
-            Mat_Fem=("qt_mat_fem", "sum"),
-            Mat_Masc=("qt_mat_masc", "sum"),
+            **{"Matrículas Masculinas": ("qt_mat_masc", "sum")},
+            **{"Matrículas Femininas": ("qt_mat_fem", "sum")},
             ENEM=("qt_ing_enem", "sum"),
-            Deficientes=("qt_mat_deficiente", "sum"),
+            Outras_Formas=("_outras_formas", "sum"),
+            FIES=("qt_mat_fies", "sum"),
+            ProUni_Integral=("qt_mat_prounii", "sum"),
+            ProUni_Parcial=("qt_mat_prounip", "sum"),
+            Mat_Presencial=("_mat_presencial", "sum"),
+            Mat_EAD=("_mat_ead", "sum"),
+            PCD=("qt_mat_deficiente", "sum"),
         )
         .reset_index()
         .sort_values("Matrículas", ascending=False)
@@ -1792,15 +1929,27 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
             # Detalhes de Alunos & Apoio
             html.Div([
                 html.Div([
-                    _titulo("Perfil dos Alunos (Gênero e Programas de Apoio)"),
+                    _titulo("Perfil dos Alunos"),
+                    html.H4("Gênero", style={"fontSize": 12, "color": COR_HEADER, "margin": "10px 0 4px"}),
                     html.Ul([
                         html.Li(f"Feminino: {_fmt_mil(mat_fem)} matrículas"),
                         html.Li(f"Masculino: {_fmt_mil(mat_masc)} matrículas"),
-                        html.Li(f"Alunos Financiados pelo FIES: {_fmt_mil(fies)}"),
-                        html.Li(f"Bolsistas ProUni: {_fmt_mil(prouni)}"),
-                        html.Li(f"Ingressantes via ENEM: {_fmt_mil(enem)}"),
-                        html.Li(f"Alunos PCD / Deficientes: {_fmt_mil(defic)}"),
-                    ], style={"fontSize": 13, "lineHeight": "1.8", "color": "#2d3748", "paddingLeft": 20}),
+                    ], style={"fontSize": 13, "lineHeight": "1.7", "color": "#2d3748", "paddingLeft": 20, "marginTop": 0}),
+                    html.H4("Formas de acesso", style={"fontSize": 12, "color": COR_HEADER, "margin": "10px 0 4px"}),
+                    html.Ul([
+                        html.Li(f"Total de ingressantes: {_fmt_mil(ing_total)}"),
+                        html.Li(f"Vestibular: {_fmt_mil(acesso_totais['Vestibular'])}"),
+                        html.Li(f"ENEM: {_fmt_mil(acesso_totais['ENEM'])}"),
+                        html.Li(f"Avaliação seriada: {_fmt_mil(acesso_totais['Avaliação seriada'])}"),
+                        html.Li(f"Seleção simplificada: {_fmt_mil(acesso_totais['Seleção simplificada'])}"),
+                        html.Li(f"Outras formas: {_fmt_mil(acesso_detalhado - acesso_totais['Vestibular'] - acesso_totais['ENEM'] - acesso_totais['Avaliação seriada'] - acesso_totais['Seleção simplificada'])}"),
+                    ], style={"fontSize": 13, "lineHeight": "1.7", "color": "#2d3748", "paddingLeft": 20, "marginTop": 0}),
+                    html.H4("Apoio e inclusão", style={"fontSize": 12, "color": COR_HEADER, "margin": "10px 0 4px"}),
+                    html.Ul([
+                        html.Li(f"FIES: {_fmt_mil(fies)}"),
+                        html.Li(f"ProUni: {_fmt_mil(prouni)}"),
+                        html.Li(f"PCD: {_fmt_mil(defic)}"),
+                    ], style={"fontSize": 13, "lineHeight": "1.7", "color": "#2d3748", "paddingLeft": 20, "marginTop": 0}),
                 ], style={"flex": 1, "backgroundColor": "#f7fafc", "padding": 12, "borderRadius": 6}),
 
                 html.Div([
@@ -1861,8 +2010,11 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
 def _build_cursos_tab(co_ies, uf, mun, ano):
     """Reconstrói o DataFrame de cursos agrupado (antes da formatação) para a
     IES selecionada, aplicando os mesmos filtros de renderizar_detalhes_ies()."""
-    _NUMERIC_COLS = ["Ingressantes", "Matrículas", "Concluintes",
-                     "FIES", "ProUni", "Mat. Fem.", "Mat. Masc.", "ENEM", "Deficientes"]
+    _NUMERIC_COLS = [
+        "Matrículas", "Ingressantes", "Concluintes", "Matrículas Masculinas", "Matrículas Femininas",
+        "ENEM", "Outras formas", "FIES", "ProUni Integral", "ProUni Parcial",
+        "Mat. Presencial", "Mat. EAD", "PCD",
+    ]
     _TEXT_COLS    = ["Curso", "Modalidade", "Grau", "Área"]
 
     if not co_ies or not uf:
@@ -1887,21 +2039,34 @@ def _build_cursos_tab(co_ies, uf, mun, ano):
     if df_c.empty:
         return pd.DataFrame(columns=_TEXT_COLS + _NUMERIC_COLS), _TEXT_COLS, _NUMERIC_COLS
 
+    df_c = df_c.assign(
+        _outras_formas=(df_c["qt_ing"] - df_c["qt_ing_enem"]).clip(lower=0),
+        _mat_presencial=df_c["qt_mat"].where(
+            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "Presencial", 0
+        ),
+        _mat_ead=df_c["qt_mat"].where(
+            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "EAD", 0
+        ),
+    )
     df_tab = (
         df_c.groupby(
             ["no_curso", "tp_modalidade_ensino", "tp_grau_academico", "no_cine_area_geral"],
             dropna=False,
         )
         .agg(
-            Ingressantes=("qt_ing", "sum"),
             Matrículas=("qt_mat", "sum"),
+            Ingressantes=("qt_ing", "sum"),
             Concluintes=("qt_conc", "sum"),
-            FIES=("qt_mat_fies", "sum"),
-            ProUni=("qt_mat_prounii", "sum"),
-            Mat_Fem=("qt_mat_fem", "sum"),
-            Mat_Masc=("qt_mat_masc", "sum"),
+            **{"Matrículas Masculinas": ("qt_mat_masc", "sum")},
+            **{"Matrículas Femininas": ("qt_mat_fem", "sum")},
             ENEM=("qt_ing_enem", "sum"),
-            Deficientes=("qt_mat_deficiente", "sum"),
+            Outras_Formas=("_outras_formas", "sum"),
+            FIES=("qt_mat_fies", "sum"),
+            ProUni_Integral=("qt_mat_prounii", "sum"),
+            ProUni_Parcial=("qt_mat_prounip", "sum"),
+            Mat_Presencial=("_mat_presencial", "sum"),
+            Mat_EAD=("_mat_ead", "sum"),
+            PCD=("qt_mat_deficiente", "sum"),
         )
         .reset_index()
         .sort_values("Matrículas", ascending=False)
@@ -1920,8 +2085,14 @@ def _render_cursos_table(df_tab, _TEXT_COLS, _NUMERIC_COLS, sort_state=None):
 
     sort_state = sort_state or {"col": "Matrículas", "asc": False}
     sort_col = sort_state.get("col", "Matrículas")
+    sort_col = {
+        "Mat. Fem.": "Matrículas Femininas",
+        "Mat. Masc.": "Matrículas Masculinas",
+    }.get(sort_col, sort_col)
     sort_asc = sort_state.get("asc", False)
     if sort_col in df_tab.columns:
+        if sort_col in _NUMERIC_COLS:
+            df_tab[sort_col] = pd.to_numeric(df_tab[sort_col], errors="coerce").fillna(0)
         df_tab = df_tab.sort_values(
             by=sort_col,
             ascending=sort_asc,
@@ -2039,12 +2210,15 @@ def _apply_course_filters(df_tab, busca, modal, grau, area, _TEXT_COLS, _NUMERIC
 # ── Ordenação reativa dos cabeçalhos da Tabela_Cursos ────────────────────────
 @app.callback(
     Output("mun-cursos-sort-state", "data"),
+    Input("mun-ies-selecionada", "data"),
     Input({"type": "th-sort-cursos", "col": dash.ALL}, "n_clicks"),
     State("mun-cursos-sort-state", "data"),
     prevent_initial_call=True,
 )
-def atualizar_sort_state_cursos(n_clicks_list, sort_state):
+def atualizar_sort_state_cursos(ies_selecionada, n_clicks_list, sort_state):
     ctx = callback_context
+    if ctx.triggered and ctx.triggered[0]["prop_id"].startswith("mun-ies-selecionada"):
+        return {"col": "Matrículas", "asc": False}
     if not ctx.triggered or not any(n for n in n_clicks_list if n):
         return dash.no_update
 
@@ -2055,6 +2229,10 @@ def atualizar_sort_state_cursos(n_clicks_list, sort_state):
 
     if not clicked_col:
         return dash.no_update
+    clicked_col = {
+        "Mat. Fem.": "Matrículas Femininas",
+        "Mat. Masc.": "Matrículas Masculinas",
+    }.get(clicked_col, clicked_col)
     sort_state = sort_state or {"col": "Matrículas", "asc": False}
     if sort_state.get("col") == clicked_col:
         return {"col": clicked_col, "asc": not sort_state.get("asc", False)}

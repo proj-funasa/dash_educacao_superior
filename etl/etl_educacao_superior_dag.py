@@ -35,7 +35,7 @@ TRINO_USER = "admin"  # precisa de permissão de escrita em bronze/silver/gold
 BRONZE_SQL = r"""
 DROP TABLE IF EXISTS bronze.bronze.educacao_superior_cursos;
 CREATE TABLE bronze.bronze.educacao_superior_cursos
-WITH (external_location = 's3a://funasa/bronze/educacao_superior_cursos', format = 'PARQUET') AS
+WITH (external_location = 's3a://funasa/bronze/educacao_superior_cursos_v2', format = 'PARQUET') AS
 SELECT
     CAST(nu_ano_censo AS INTEGER) AS nu_ano_censo,
     no_regiao, co_regiao, no_uf, sg_uf, co_uf, no_municipio, co_municipio, in_capital,
@@ -44,16 +44,37 @@ SELECT
     CAST(qt_curso AS INTEGER) AS qt_curso, CAST(qt_vg_total AS INTEGER) AS qt_vg_total,
     CAST(qt_inscrito_total AS INTEGER) AS qt_inscrito_total, CAST(qt_ing AS INTEGER) AS qt_ing,
     CAST(qt_ing_fem AS INTEGER) AS qt_ing_fem, CAST(qt_ing_masc AS INTEGER) AS qt_ing_masc,
+    CAST(qt_ing_vestibular AS INTEGER) AS qt_ing_vestibular,
+    CAST(qt_ing_enem AS INTEGER) AS qt_ing_enem,
+    CAST(qt_ing_avaliacao_seriada AS INTEGER) AS qt_ing_avaliacao_seriada,
+    CAST(qt_ing_selecao_simplifica AS INTEGER) AS qt_ing_selecao_simplifica,
+    CAST(qt_ing_egr AS INTEGER) AS qt_ing_egr,
+    CAST(qt_ing_outro_tipo_selecao AS INTEGER) AS qt_ing_outro_tipo_selecao,
+    CAST(qt_ing_proc_seletivo AS INTEGER) AS qt_ing_proc_seletivo,
+    CAST(qt_ing_vg_remanesc AS INTEGER) AS qt_ing_vg_remanesc,
+    CAST(qt_ing_vg_prog_especial AS INTEGER) AS qt_ing_vg_prog_especial,
+    CAST(qt_ing_outra_forma AS INTEGER) AS qt_ing_outra_forma,
     CAST(qt_mat AS INTEGER) AS qt_mat, CAST(qt_mat_fem AS INTEGER) AS qt_mat_fem, CAST(qt_mat_masc AS INTEGER) AS qt_mat_masc,
     CAST(qt_conc AS INTEGER) AS qt_conc, CAST(qt_conc_fem AS INTEGER) AS qt_conc_fem, CAST(qt_conc_masc AS INTEGER) AS qt_conc_masc,
-    CAST(qt_ing_enem AS INTEGER) AS qt_ing_enem, CAST(qt_ing_financ AS INTEGER) AS qt_ing_financ,
+    CAST(qt_ing_financ AS INTEGER) AS qt_ing_financ,
+    CAST(qt_ing_financ_reemb AS INTEGER) AS qt_ing_financ_reemb, CAST(qt_ing_fies AS INTEGER) AS qt_ing_fies,
+    CAST(qt_ing_rpfies AS INTEGER) AS qt_ing_rpfies, CAST(qt_ing_financ_reemb_outros AS INTEGER) AS qt_ing_financ_reemb_outros,
+    CAST(qt_ing_financ_nreemb AS INTEGER) AS qt_ing_financ_nreemb, CAST(qt_ing_prounii AS INTEGER) AS qt_ing_prounii,
+    CAST(qt_ing_prounip AS INTEGER) AS qt_ing_prounip, CAST(qt_ing_nrpfies AS INTEGER) AS qt_ing_nrpfies,
+    CAST(qt_ing_financ_nreemb_outros AS INTEGER) AS qt_ing_financ_nreemb_outros,
+    CAST(qt_mat_financ AS INTEGER) AS qt_mat_financ, CAST(qt_mat_financ_reemb AS INTEGER) AS qt_mat_financ_reemb,
+    CAST(qt_mat_fies AS INTEGER) AS qt_mat_fies, CAST(qt_mat_rpfies AS INTEGER) AS qt_mat_rpfies,
+    CAST(qt_mat_financ_reemb_outros AS INTEGER) AS qt_mat_financ_reemb_outros,
+    CAST(qt_mat_financ_nreemb AS INTEGER) AS qt_mat_financ_nreemb,
     CAST(qt_mat_prounii AS INTEGER) AS qt_mat_prounii, CAST(qt_mat_prounip AS INTEGER) AS qt_mat_prounip,
-    CAST(qt_mat_fies AS INTEGER) AS qt_mat_fies, CAST(qt_aluno_deficiente AS INTEGER) AS qt_aluno_deficiente,
+    CAST(qt_mat_nrpfies AS INTEGER) AS qt_mat_nrpfies,
+    CAST(qt_mat_financ_nreemb_outros AS INTEGER) AS qt_mat_financ_nreemb_outros,
+    CAST(qt_aluno_deficiente AS INTEGER) AS qt_aluno_deficiente,
     CAST(qt_mat_deficiente AS INTEGER) AS qt_mat_deficiente
 FROM seaweedfs.raw.inep_educacao_superior_cursos;
 DROP TABLE IF EXISTS bronze.bronze.educacao_superior_ies;
 CREATE TABLE bronze.bronze.educacao_superior_ies
-WITH (external_location = 's3a://funasa/bronze/educacao_superior_ies', format = 'PARQUET') AS
+WITH (external_location = 's3a://funasa/bronze/educacao_superior_ies_v2', format = 'PARQUET') AS
 SELECT
     CAST(nu_ano_censo AS INTEGER) AS nu_ano_censo,
     no_regiao_ies, CAST(co_regiao_ies AS INTEGER) AS co_regiao_ies, no_uf_ies, sg_uf_ies,
@@ -61,6 +82,7 @@ SELECT
     CAST(tp_rede AS INTEGER) AS tp_rede, tp_categoria_administrativa, CAST(co_ies AS INTEGER) AS co_ies, no_ies, sg_ies,
     CAST(qt_doc_total AS INTEGER) AS qt_doc_total, CAST(qt_doc_exe AS INTEGER) AS qt_doc_exe,
     CAST(qt_doc_ex_dout AS INTEGER) AS qt_doc_ex_dout, CAST(qt_doc_ex_mest AS INTEGER) AS qt_doc_ex_mest,
+    CAST(qt_doc_ex_esp AS INTEGER) AS qt_doc_ex_esp,
     CAST(qt_doc_ex_femi AS INTEGER) AS qt_doc_ex_femi, CAST(qt_doc_ex_masc AS INTEGER) AS qt_doc_ex_masc,
     CAST(qt_tec_total AS INTEGER) AS qt_tec_total
 FROM seaweedfs.raw.inep_educacao_superior_ies;
@@ -69,7 +91,7 @@ FROM seaweedfs.raw.inep_educacao_superior_ies;
 SILVER_SQL = r"""
 DROP TABLE IF EXISTS silver.silver.educacao_superior_cursos;
 CREATE TABLE silver.silver.educacao_superior_cursos
-WITH (external_location = 's3a://funasa/silver/educacao_superior_cursos', format = 'PARQUET') AS
+WITH (external_location = 's3a://funasa/silver/educacao_superior_cursos_v2', format = 'PARQUET') AS
 SELECT
     nu_ano_censo, TRIM(no_regiao) AS no_regiao, co_regiao, TRIM(no_uf) AS no_uf, TRIM(sg_uf) AS sg_uf, co_uf,
     TRIM(no_municipio) AS no_municipio, co_municipio, in_capital,
@@ -80,16 +102,35 @@ SELECT
     TRIM(tp_modalidade_ensino) AS tp_modalidade_ensino, TRIM(tp_nivel_academico) AS tp_nivel_academico,
     COALESCE(qt_curso,0) AS qt_curso, COALESCE(qt_vg_total,0) AS qt_vg_total, COALESCE(qt_inscrito_total,0) AS qt_inscrito_total,
     COALESCE(qt_ing,0) AS qt_ing, COALESCE(qt_ing_fem,0) AS qt_ing_fem, COALESCE(qt_ing_masc,0) AS qt_ing_masc,
+    COALESCE(qt_ing_vestibular,0) AS qt_ing_vestibular, COALESCE(qt_ing_enem,0) AS qt_ing_enem,
+    COALESCE(qt_ing_avaliacao_seriada,0) AS qt_ing_avaliacao_seriada,
+    COALESCE(qt_ing_selecao_simplifica,0) AS qt_ing_selecao_simplifica,
+    COALESCE(qt_ing_egr,0) AS qt_ing_egr, COALESCE(qt_ing_outro_tipo_selecao,0) AS qt_ing_outro_tipo_selecao,
+    COALESCE(qt_ing_proc_seletivo,0) AS qt_ing_proc_seletivo,
+    COALESCE(qt_ing_vg_remanesc,0) AS qt_ing_vg_remanesc,
+    COALESCE(qt_ing_vg_prog_especial,0) AS qt_ing_vg_prog_especial,
+    COALESCE(qt_ing_outra_forma,0) AS qt_ing_outra_forma,
     COALESCE(qt_mat,0) AS qt_mat, COALESCE(qt_mat_fem,0) AS qt_mat_fem, COALESCE(qt_mat_masc,0) AS qt_mat_masc,
     COALESCE(qt_conc,0) AS qt_conc, COALESCE(qt_conc_fem,0) AS qt_conc_fem, COALESCE(qt_conc_masc,0) AS qt_conc_masc,
-    COALESCE(qt_ing_enem,0) AS qt_ing_enem, COALESCE(qt_ing_financ,0) AS qt_ing_financ,
+    COALESCE(qt_ing_financ,0) AS qt_ing_financ, COALESCE(qt_ing_financ_reemb,0) AS qt_ing_financ_reemb,
+    COALESCE(qt_ing_fies,0) AS qt_ing_fies, COALESCE(qt_ing_rpfies,0) AS qt_ing_rpfies,
+    COALESCE(qt_ing_financ_reemb_outros,0) AS qt_ing_financ_reemb_outros,
+    COALESCE(qt_ing_financ_nreemb,0) AS qt_ing_financ_nreemb,
+    COALESCE(qt_ing_prounii,0) AS qt_ing_prounii, COALESCE(qt_ing_prounip,0) AS qt_ing_prounip,
+    COALESCE(qt_ing_nrpfies,0) AS qt_ing_nrpfies,
+    COALESCE(qt_mat_financ,0) AS qt_mat_financ, COALESCE(qt_mat_financ_reemb,0) AS qt_mat_financ_reemb,
+    COALESCE(qt_mat_fies,0) AS qt_mat_fies, COALESCE(qt_mat_rpfies,0) AS qt_mat_rpfies,
+    COALESCE(qt_mat_financ_reemb_outros,0) AS qt_mat_financ_reemb_outros,
+    COALESCE(qt_mat_financ_nreemb,0) AS qt_mat_financ_nreemb,
     COALESCE(qt_mat_prounii,0) AS qt_mat_prounii, COALESCE(qt_mat_prounip,0) AS qt_mat_prounip,
-    COALESCE(qt_mat_fies,0) AS qt_mat_fies, COALESCE(qt_aluno_deficiente,0) AS qt_aluno_deficiente,
+    COALESCE(qt_mat_nrpfies,0) AS qt_mat_nrpfies,
+    COALESCE(qt_mat_financ_nreemb_outros,0) AS qt_mat_financ_nreemb_outros,
+    COALESCE(qt_aluno_deficiente,0) AS qt_aluno_deficiente,
     COALESCE(qt_mat_deficiente,0) AS qt_mat_deficiente
 FROM bronze.bronze.educacao_superior_cursos;
 DROP TABLE IF EXISTS silver.silver.educacao_superior_ies;
 CREATE TABLE silver.silver.educacao_superior_ies
-WITH (external_location = 's3a://funasa/silver/educacao_superior_ies', format = 'PARQUET') AS
+WITH (external_location = 's3a://funasa/silver/educacao_superior_ies_v2', format = 'PARQUET') AS
 SELECT
     nu_ano_censo, TRIM(no_regiao_ies) AS no_regiao_ies, co_regiao_ies, TRIM(no_uf_ies) AS no_uf_ies,
     TRIM(sg_uf_ies) AS sg_uf_ies, co_municipio_ies, TRIM(no_municipio_ies) AS no_municipio_ies, in_capital_ies,
@@ -97,6 +138,7 @@ SELECT
     TRIM(tp_categoria_administrativa) AS tp_categoria_administrativa, co_ies, TRIM(no_ies) AS no_ies, TRIM(sg_ies) AS sg_ies,
     COALESCE(qt_doc_total,0) AS qt_doc_total, COALESCE(qt_doc_exe,0) AS qt_doc_exe,
     COALESCE(qt_doc_ex_dout,0) AS qt_doc_ex_dout, COALESCE(qt_doc_ex_mest,0) AS qt_doc_ex_mest,
+    COALESCE(qt_doc_ex_esp,0) AS qt_doc_ex_esp,
     COALESCE(qt_doc_ex_femi,0) AS qt_doc_ex_femi, COALESCE(qt_doc_ex_masc,0) AS qt_doc_ex_masc,
     COALESCE(qt_tec_total,0) AS qt_tec_total
 FROM bronze.bronze.educacao_superior_ies;
@@ -105,12 +147,43 @@ FROM bronze.bronze.educacao_superior_ies;
 GOLD_SQL = r"""
 DROP TABLE IF EXISTS gold.gold.educacao_superior_cursos;
 CREATE TABLE gold.gold.educacao_superior_cursos
-WITH (external_location = 's3a://funasa/gold/educacao_superior_cursos', format = 'PARQUET') AS
-SELECT * FROM silver.silver.educacao_superior_cursos;
+WITH (
+    external_location = 's3a://funasa/gold/educacao_superior_cursos_v2',
+    format = 'PARQUET',
+    partitioned_by = ARRAY['nu_ano_censo']
+) AS
+SELECT
+    no_regiao, co_regiao, no_uf, sg_uf, co_uf, no_municipio, co_municipio, in_capital,
+    tp_organizacao_academica, tp_rede, tp_categoria_administrativa,
+    co_ies, no_curso, co_curso, no_cine_area_geral, no_cine_area_especifica,
+    tp_grau_academico, tp_modalidade_ensino, tp_nivel_academico,
+    qt_curso, qt_vg_total, qt_inscrito_total, qt_ing, qt_ing_fem, qt_ing_masc,
+    qt_ing_vestibular, qt_ing_enem, qt_ing_avaliacao_seriada, qt_ing_selecao_simplifica,
+    qt_ing_egr, qt_ing_outro_tipo_selecao, qt_ing_proc_seletivo, qt_ing_vg_remanesc,
+    qt_ing_vg_prog_especial, qt_ing_outra_forma,
+    qt_mat, qt_mat_fem, qt_mat_masc, qt_conc, qt_conc_fem, qt_conc_masc,
+    qt_ing_financ, qt_ing_financ_reemb, qt_ing_fies, qt_ing_rpfies,
+    qt_ing_financ_reemb_outros, qt_ing_financ_nreemb, qt_ing_prounii, qt_ing_prounip,
+    qt_ing_nrpfies, qt_ing_financ_nreemb_outros,
+    qt_mat_financ, qt_mat_financ_reemb, qt_mat_fies, qt_mat_rpfies,
+    qt_mat_financ_reemb_outros, qt_mat_financ_nreemb, qt_mat_prounii, qt_mat_prounip,
+    qt_mat_nrpfies, qt_mat_financ_nreemb_outros, qt_aluno_deficiente, qt_mat_deficiente,
+    nu_ano_censo
+FROM silver.silver.educacao_superior_cursos;
 DROP TABLE IF EXISTS gold.gold.educacao_superior_ies;
 CREATE TABLE gold.gold.educacao_superior_ies
-WITH (external_location = 's3a://funasa/gold/educacao_superior_ies', format = 'PARQUET') AS
-SELECT * FROM silver.silver.educacao_superior_ies;
+WITH (
+    external_location = 's3a://funasa/gold/educacao_superior_ies_v2',
+    format = 'PARQUET',
+    partitioned_by = ARRAY['nu_ano_censo']
+) AS
+SELECT
+    no_regiao_ies, co_regiao_ies, no_uf_ies, sg_uf_ies, co_municipio_ies,
+    no_municipio_ies, in_capital_ies, tp_organizacao_academica, tp_rede,
+    tp_categoria_administrativa, co_ies, no_ies, sg_ies, qt_doc_total, qt_doc_exe,
+    qt_doc_ex_dout, qt_doc_ex_mest, qt_doc_ex_esp, qt_doc_ex_femi, qt_doc_ex_masc,
+    qt_tec_total, nu_ano_censo
+FROM silver.silver.educacao_superior_ies;
 """
 
 # Runner inline: conecta no Trino e executa cada statement do SQL passado em $LAYER_SQL.

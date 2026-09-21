@@ -18,7 +18,7 @@ DROP TABLE IF EXISTS bronze.bronze.educacao_superior_cursos;
 
 CREATE TABLE bronze.bronze.educacao_superior_cursos
 WITH (
-    external_location = 's3a://funasa/bronze/educacao_superior_cursos',
+    external_location = 's3a://funasa/bronze/educacao_superior_cursos_v2',
     format = 'PARQUET'
 )
 AS
@@ -49,17 +49,42 @@ SELECT
     CAST(qt_ing            AS INTEGER) AS qt_ing,
     CAST(qt_ing_fem        AS INTEGER) AS qt_ing_fem,
     CAST(qt_ing_masc       AS INTEGER) AS qt_ing_masc,
+    CAST(qt_ing_vestibular AS INTEGER) AS qt_ing_vestibular,
+    CAST(qt_ing_enem       AS INTEGER) AS qt_ing_enem,
+    CAST(qt_ing_avaliacao_seriada AS INTEGER) AS qt_ing_avaliacao_seriada,
+    CAST(qt_ing_selecao_simplifica AS INTEGER) AS qt_ing_selecao_simplifica,
+    CAST(qt_ing_egr        AS INTEGER) AS qt_ing_egr,
+    CAST(qt_ing_outro_tipo_selecao AS INTEGER) AS qt_ing_outro_tipo_selecao,
+    CAST(qt_ing_proc_seletivo AS INTEGER) AS qt_ing_proc_seletivo,
+    CAST(qt_ing_vg_remanesc AS INTEGER) AS qt_ing_vg_remanesc,
+    CAST(qt_ing_vg_prog_especial AS INTEGER) AS qt_ing_vg_prog_especial,
+    CAST(qt_ing_outra_forma AS INTEGER) AS qt_ing_outra_forma,
     CAST(qt_mat            AS INTEGER) AS qt_mat,
     CAST(qt_mat_fem        AS INTEGER) AS qt_mat_fem,
     CAST(qt_mat_masc       AS INTEGER) AS qt_mat_masc,
     CAST(qt_conc           AS INTEGER) AS qt_conc,
     CAST(qt_conc_fem       AS INTEGER) AS qt_conc_fem,
     CAST(qt_conc_masc      AS INTEGER) AS qt_conc_masc,
-    CAST(qt_ing_enem       AS INTEGER) AS qt_ing_enem,
     CAST(qt_ing_financ     AS INTEGER) AS qt_ing_financ,
+    CAST(qt_ing_financ_reemb AS INTEGER) AS qt_ing_financ_reemb,
+    CAST(qt_ing_fies       AS INTEGER) AS qt_ing_fies,
+    CAST(qt_ing_rpfies     AS INTEGER) AS qt_ing_rpfies,
+    CAST(qt_ing_financ_reemb_outros AS INTEGER) AS qt_ing_financ_reemb_outros,
+    CAST(qt_ing_financ_nreemb AS INTEGER) AS qt_ing_financ_nreemb,
+    CAST(qt_ing_prounii    AS INTEGER) AS qt_ing_prounii,
+    CAST(qt_ing_prounip    AS INTEGER) AS qt_ing_prounip,
+    CAST(qt_ing_nrpfies    AS INTEGER) AS qt_ing_nrpfies,
+    CAST(qt_ing_financ_nreemb_outros AS INTEGER) AS qt_ing_financ_nreemb_outros,
+    CAST(qt_mat_financ     AS INTEGER) AS qt_mat_financ,
+    CAST(qt_mat_financ_reemb AS INTEGER) AS qt_mat_financ_reemb,
+    CAST(qt_mat_fies       AS INTEGER) AS qt_mat_fies,
+    CAST(qt_mat_rpfies     AS INTEGER) AS qt_mat_rpfies,
+    CAST(qt_mat_financ_reemb_outros AS INTEGER) AS qt_mat_financ_reemb_outros,
+    CAST(qt_mat_financ_nreemb AS INTEGER) AS qt_mat_financ_nreemb,
     CAST(qt_mat_prounii    AS INTEGER) AS qt_mat_prounii,
     CAST(qt_mat_prounip    AS INTEGER) AS qt_mat_prounip,
-    CAST(qt_mat_fies       AS INTEGER) AS qt_mat_fies,
+    CAST(qt_mat_nrpfies    AS INTEGER) AS qt_mat_nrpfies,
+    CAST(qt_mat_financ_nreemb_outros AS INTEGER) AS qt_mat_financ_nreemb_outros,
     CAST(qt_aluno_deficiente AS INTEGER) AS qt_aluno_deficiente,
     CAST(qt_mat_deficiente   AS INTEGER) AS qt_mat_deficiente
 FROM seaweedfs.raw.inep_educacao_superior_cursos;
@@ -68,7 +93,7 @@ DROP TABLE IF EXISTS bronze.bronze.educacao_superior_ies;
 
 CREATE TABLE bronze.bronze.educacao_superior_ies
 WITH (
-    external_location = 's3a://funasa/bronze/educacao_superior_ies',
+    external_location = 's3a://funasa/bronze/educacao_superior_ies_v2',
     format = 'PARQUET'
 )
 AS
@@ -91,6 +116,7 @@ SELECT
     CAST(qt_doc_exe     AS INTEGER) AS qt_doc_exe,
     CAST(qt_doc_ex_dout AS INTEGER) AS qt_doc_ex_dout,
     CAST(qt_doc_ex_mest AS INTEGER) AS qt_doc_ex_mest,
+    CAST(qt_doc_ex_esp AS INTEGER) AS qt_doc_ex_esp,
     CAST(qt_doc_ex_femi AS INTEGER) AS qt_doc_ex_femi,
     CAST(qt_doc_ex_masc AS INTEGER) AS qt_doc_ex_masc,
     CAST(qt_tec_total   AS INTEGER) AS qt_tec_total
