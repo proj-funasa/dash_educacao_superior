@@ -9,6 +9,7 @@ import os
 import math
 import json
 import pickle
+import unicodedata
 
 import dash
 from dash import Input, Output, State, dcc, html, callback_context
@@ -325,20 +326,37 @@ CATEGORIA_ADM_MAP = {
     1: "Pública Federal",
     2: "Pública Estadual",
     3: "Pública Municipal",
-    4: "Privada c/ fins lucrativos",
-    5: "Privada s/ fins lucrativos",
+    4: "Privada com fins lucrativos",
+    5: "Privada sem fins lucrativos",
     7: "Especial",
 }
 CATEGORIAS_ADM = ["Todas"] + list(CATEGORIA_ADM_MAP.values())
 
 
 def _decode_categoria(val):
-    """Converte código numérico de tp_categoria_administrativa para rótulo legível.
-    Retorna o valor original se o código não estiver no mapeamento."""
+    """Normaliza códigos e rótulos da categoria administrativa do INEP."""
     try:
         return CATEGORIA_ADM_MAP.get(int(val), val)
     except (TypeError, ValueError):
-        return val
+        if pd.isna(val):
+            return val
+        texto = " ".join(str(val).strip().split())
+        comparavel = unicodedata.normalize("NFKD", texto).encode(
+            "ascii", "ignore"
+        ).decode("ascii").lower()
+        aliases = {
+            "privada c/ fins lucrativos": "Privada com fins lucrativos",
+            "privada c fins lucrativos": "Privada com fins lucrativos",
+            "privada com fins lucrativos": "Privada com fins lucrativos",
+            "privada s/ fins lucrativos": "Privada sem fins lucrativos",
+            "privada s fins lucrativos": "Privada sem fins lucrativos",
+            "privada sem fins lucrativos": "Privada sem fins lucrativos",
+            "publica federal": "Pública Federal",
+            "publica estadual": "Pública Estadual",
+            "publica municipal": "Pública Municipal",
+            "especial": "Especial",
+        }
+        return aliases.get(comparavel, texto)
 
 
 # ── Cores ─────────────────────────────────────────────────────────────────────
