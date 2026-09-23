@@ -156,7 +156,7 @@ def _carregar_com_cache(nome, tabela, colunas):
     inicio = _time.time()
     dados = _trino_query(
         f"SELECT {', '.join(colunas)} FROM {tabela} "
-        f"WHERE nu_ano_censo IN ({filtro_anos})"
+        f"WHERE CAST(nu_ano_censo AS INTEGER) IN ({filtro_anos})"
     )
     with open(caminho, "wb") as arquivo:
         pickle.dump({"metadados": metadados, "dados": dados}, arquivo, protocol=pickle.HIGHEST_PROTOCOL)
@@ -733,6 +733,49 @@ def _aba_cursos_layout():
                       "alignItems": "flex-start", "marginBottom": 8, "flexWrap": "wrap", "gap": 8}),
             html.Div(id="tabela-top-cursos"),
         ]),
+
+        html.Div(style={"height": 16}),
+
+        # Consulta de IES que ofertam um curso específico
+        _card([
+            _titulo("Onde o curso é ofertado"),
+            _nota("Selecione um curso para consultar as IES e, opcionalmente, restrinja por UF e município."),
+            html.Div([
+                html.Div([
+                    html.Label("Curso", style={"fontSize": 11, "fontWeight": 600,
+                                               "color": "#4a5568", "marginBottom": 4,
+                                               "display": "block"}),
+                    dcc.Dropdown(
+                        id="oferta-curso",
+                        options=[{"label": curso, "value": curso} for curso in sorted(
+                            df_cursos["no_curso"].dropna().unique()
+                        )],
+                        placeholder="Digite para buscar um curso",
+                        clearable=True,
+                        searchable=True,
+                        style={"width": 420, "fontSize": 13},
+                    ),
+                ]),
+                html.Div([
+                    html.Label("UF", style={"fontSize": 11, "fontWeight": 600,
+                                             "color": "#4a5568", "marginBottom": 4,
+                                             "display": "block"}),
+                    dcc.Dropdown(id="oferta-uf", options=[{"label": "Todas", "value": "Todas"}],
+                                 value="Todas", clearable=False,
+                                 style={"width": 140, "fontSize": 13}),
+                ]),
+                html.Div([
+                    html.Label("Município", style={"fontSize": 11, "fontWeight": 600,
+                                                   "color": "#4a5568", "marginBottom": 4,
+                                                   "display": "block"}),
+                    dcc.Dropdown(id="oferta-municipio", options=[{"label": "Todos", "value": "Todos"}],
+                                 value="Todos", clearable=False,
+                                 style={"width": 240, "fontSize": 13}),
+                ]),
+            ], style={"display": "flex", "gap": 12, "flexWrap": "wrap", "alignItems": "flex-end",
+                      "marginTop": 10}),
+            html.Div(id="tabela-ies-curso", style={"marginTop": 14}),
+        ]),
     ])
 
 
@@ -1019,6 +1062,91 @@ def filtrar_uf_por_regiao(regiao):
     else:
         ufs = sorted(df_cursos["sg_uf"].dropna().unique())
     return [{"label": "Todas", "value": "Todas"}] + [{"label": u, "value": u} for u in ufs], "Todas"
+
+
+# ── Consulta de IES por curso (aba Cursos) ───────────────────────────────────
+@app.callback(
+    Output("oferta-uf", "options"),
+    Output("oferta-uf", "value"),
+    Input("oferta-curso", "value"),
+    Input("f-ano", "value"),
+)
+def atualizar_ufs_oferta(curso, ano):
+    if not curso:
+        return [{"label": "Todas", "value": "Todas"}], "Todas"
+    df = df_cursos[df_cursos["nu_ano_censo"].astype(int) == int(ano)]
+    df = df[df["no_curso"] == curso]
+    ufs = sorted(df["sg_uf"].dropna().unique().tolist())
+    return [{"label": "Todas", "value": "Todas"}] + [{"label": uf, "value": uf} for uf in ufs], "Todas"
+
+
+@app.callback(
+    Output("oferta-municipio", "options"),
+    Output("oferta-municipio", "value"),
+    Input("oferta-curso", "value"),
+    Input("oferta-uf", "value"),
+    Input("f-ano", "value"),
+)
+def atualizar_municipios_oferta(curso, uf, ano):
+    if not curso:
+        return [{"label": "Todos", "value": "Todos"}], "Todos"
+    df = df_cursos[df_cursos["nu_ano_censo"].astype(int) == int(ano)]
+    df = df[df["no_curso"] == curso]
+    if uf and uf != "Todas":
+        df = df[df["sg_uf"] == uf]
+    municipios = sorted(df["no_municipio"].dropna().unique().tolist())
+    return [{"label": "Todos", "value": "Todos"}] + [
+        {"label": municipio, "value": municipio} for municipio in municipios
+    ], "Todos"
+
+
+@app.callback(
+    Output("tabela-ies-curso", "children"),
+    Input("oferta-curso", "value"),
+    Input("oferta-uf", "value"),
+    Input("oferta-municipio", "value"),
+    Input("f-ano", "value"),
+)
+def atualizar_ies_por_curso(curso, uf, municipio, ano):
+    if not curso:
+        return _nota("Selecione um curso para visualizar as instituições que o ofertam.")
+
+    df = df_cursos[df_cursos["nu_ano_censo"].astype(int) == int(ano)]
+    df = df[df["no_curso"] == curso]
+    if uf and uf != "Todas":
+        df = df[df["sg_uf"] == uf]
+    if municipio and municipio != "Todos":
+        df = df[df["no_municipio"] == municipio]
+
+    if df.empty:
+        return _nota("Nenhuma IES encontrada para os filtros selecionados.", cor="#c53030")
+
+    ofertas = (
+        df.groupby(["co_ies", "sg_uf", "no_municipio"])
+          .agg(
+              Modalidade=("tp_modalidade_ensino", lambda valores: ", ".join(sorted(set(valores.dropna().astype(str))))),
+              Rede=("tp_rede", lambda valores: ", ".join(sorted(set(valores.dropna().astype(str))))),
+              Matrículas=("qt_mat", "sum"),
+              Vagas=("qt_vg_total", "sum"),
+          )
+          .reset_index()
+    )
+    ies = (
+        df_ies[df_ies["nu_ano_censo"].astype(int) == int(ano)]
+        .drop_duplicates("co_ies")[["co_ies", "no_ies"]]
+    )
+    ofertas = ofertas.merge(ies, on="co_ies", how="left")
+    ofertas["IES"] = ofertas["no_ies"].fillna(ofertas["co_ies"].astype(str))
+    ofertas = ofertas.rename(columns={"sg_uf": "UF", "no_municipio": "Município"})
+    ofertas["Matrículas"] = ofertas["Matrículas"].apply(_fmt_mil)
+    ofertas["Vagas"] = ofertas["Vagas"].apply(_fmt_mil)
+    ofertas = ofertas[["IES", "UF", "Município", "Modalidade", "Rede", "Matrículas", "Vagas"]]
+    ofertas = ofertas.sort_values(["UF", "Município", "IES"])
+
+    return html.Div([
+        _nota(f"{len(ofertas)} IES encontrada(s) para {curso}."),
+        _tabela_html(ofertas, max_rows=200),
+    ])
 
 
 # ── KPIs + Gráficos dinâmicos da Aba Cursos ──────────────────────────────────
