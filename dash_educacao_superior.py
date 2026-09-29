@@ -3,6 +3,14 @@
 dash_educacao_superior.py
 Dashboard — Censo da Educação Superior (INEP 2024)
 Fonte: public.inep_educacao_superior_cursos  e  public.inep_educacao_superior_ies
+
+Padrão de TODAS as tabelas do dashboard:
+  1. Ordem das colunas numéricas:
+       Total de Matrículas → Presencial → EAD → Ingressantes → Concluintes → demais (ordem lógica)
+  2. Sempre há linha TOTAL
+  3. Valores numéricos alinhados à esquerda da célula
+  4. Vale para todas as telas
+  5. Botões de download (CSV / Excel) em todas as tabelas
 """
 
 import os
@@ -76,6 +84,11 @@ def _trino_query(sql: str, max_retries: int = 3) -> pd.DataFrame:
             if tentativa == max_retries:
                 raise
             _time_mod.sleep(5 * tentativa)  # 5s, 10s, 15s
+
+def _sql_str(valor) -> str:
+    """Literal string SQL seguro (escapa aspas simples, ex.: Santa Bárbara d'Oeste)."""
+    return "'" + str(valor).replace("'", "''") + "'"
+
 
 print("[EDUC] Carregando tabela de cursos...", flush=True)
 
@@ -465,10 +478,92 @@ def _filtro_label(label, dropdown_id, options, value, width=180):
     ])
 
 
-# ── Tabela HTML genérica ───────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# PADRÃO ÚNICO DE TABELAS
+#   • ordem das colunas numéricas (fixas + demais em ordem lógica)
+#   • linha TOTAL sempre presente
+#   • números alinhados à esquerda
+#   • botões de download (CSV / Excel)
+# ═══════════════════════════════════════════════════════════════════════════════
+_ORDEM_LISTA = [
+    "Total de Matrículas", "Matrículas",
+    "Presencial", "Mat. Presencial",
+    "EAD", "Mat. EAD",
+    "Ingressantes", "Concluintes",
+    # demais variáveis, em ordem lógica
+    "Vagas", "Cursos", "Cursos Únicos", "Nº Turmas/Ofertados", "IES",
+    "Matrículas Femininas", "Matrículas Masculinas",
+    "ENEM", "Outras formas",
+    "FIES", "ProUni Integral", "ProUni Parcial", "PCD",
+    "Docentes (IES)",
+]
+_ORDEM_INDICADORES = {nome: i for i, nome in enumerate(_ORDEM_LISTA)}
+
+
+def _ordenar_colunas_tabela(df_tab):
+    """Colunas descritivas primeiro; numéricas na ordem padrão (desconhecidas ao final)."""
+    colunas = list(df_tab.columns)
+    pos = {c: i for i, c in enumerate(colunas)}
+    numericas = [c for c in colunas if pd.api.types.is_numeric_dtype(df_tab[c])]
+    descritivas = [c for c in colunas if c not in numericas]
+    numericas.sort(key=lambda c: (_ORDEM_INDICADORES.get(c, len(_ORDEM_LISTA)), pos[c]))
+    return df_tab[descritivas + numericas]
+
+
+def _adicionar_total(df_tab, coluna_rotulo=None):
+    """Acrescenta a linha TOTAL (soma das colunas numéricas) ao final."""
+    if df_tab.empty:
+        return df_tab.copy()
+    df_total = df_tab.copy()
+    numericas = [c for c in df_total.columns if pd.api.types.is_numeric_dtype(df_total[c])]
+    linha = {c: "" for c in df_total.columns}
+    for c in numericas:
+        linha[c] = df_total[c].sum()
+    rotulo = coluna_rotulo or next(
+        (c for c in df_total.columns if c not in numericas), df_total.columns[0]
+    )
+    linha[rotulo] = "TOTAL"
+    return pd.concat([df_total, pd.DataFrame([linha])], ignore_index=True)
+
+
+def _controles_download(df_tab, chave, nome_arquivo):
+    estilo = {"border": "none", "borderRadius": 4, "padding": "7px 12px",
+              "fontSize": 12, "fontWeight": 600, "cursor": "pointer", "color": "#fff"}
+    return html.Div([
+        dcc.Store(id=f"edu-download-data-{chave}", data={
+            "rows": df_tab.to_dict("records"),
+            "filename": nome_arquivo,
+        }),
+        dcc.Download(id=f"edu-download-file-{chave}"),
+        html.Button("Baixar CSV", id=f"edu-download-csv-{chave}", n_clicks=0,
+                    title="Baixar tabela em CSV",
+                    style={**estilo, "backgroundColor": COR_VERDE}),
+        # Sempre renderizado: o callback exige que todos os Inputs existam no layout
+        html.Button("Baixar Excel", id=f"edu-download-xlsx-{chave}", n_clicks=0,
+                    title="Baixar tabela em Excel",
+                    style={**estilo, "backgroundColor": COR_AZUL}),
+    ], style={"display": "flex", "justifyContent": "flex-end", "gap": 8, "margin": "8px 0"})
+
+
+def _bloco_tabela_download(df_tab, chave, nome_arquivo, max_rows=50, coluna_rotulo=None):
+    """Padrão: ordena colunas → adiciona TOTAL → botões de download → tabela."""
+    df_ord = _ordenar_colunas_tabela(df_tab)
+    df_total = _adicionar_total(df_ord, coluna_rotulo)
+    return html.Div([
+        _controles_download(df_total, chave, nome_arquivo),
+        _tabela_html(df_total, max_rows=max_rows),
+    ])
+
+
 def _tabela_html(df_tab, cor_col=None, cor_fn=None, max_rows=50):
-    """Gera html.Table a partir de um DataFrame."""
+    """html.Table padrão. Números alinhados à esquerda; linha TOTAL sempre visível."""
+    df_tab = _ordenar_colunas_tabela(df_tab)
     colunas = df_tab.columns.tolist()
+
+    tem_total = (not df_tab.empty) and (df_tab.iloc[-1].astype(str) == "TOTAL").any()
+    corpo = df_tab.iloc[:-1] if tem_total else df_tab
+    linha_total = df_tab.iloc[-1] if tem_total else None
+
     header = html.Tr([
         html.Th(col, style={
             "padding": "10px 14px", "textAlign": "left", "fontSize": 11,
@@ -476,17 +571,21 @@ def _tabela_html(df_tab, cor_col=None, cor_fn=None, max_rows=50):
             "borderBottom": "2px solid #e2e8f0",
             "textTransform": "uppercase", "letterSpacing": "0.03em",
             "whiteSpace": "nowrap",
-        })
-        for col in colunas
+        }) for col in colunas
     ])
 
+    def _fmt(col, val):
+        if pd.api.types.is_numeric_dtype(df_tab[col]) and pd.notna(val) and val != "":
+            return _fmt_mil(val)
+        return val
+
     rows = []
-    for i, (_, row) in enumerate(df_tab.head(max_rows).iterrows()):
-        cells = []
+    for i, (_, row) in enumerate(corpo.head(max_rows).iterrows()):
         bg = "#fafafa" if i % 2 == 0 else "#ffffff"
+        cells = []
         for col in colunas:
-            val = row[col]
-            style = {"padding": "8px 14px", "fontSize": 12,
+            val = _fmt(col, row[col])
+            style = {"padding": "8px 14px", "fontSize": 12, "textAlign": "left",
                      "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}
             if cor_col and col == cor_col and cor_fn:
                 style["color"] = cor_fn(val)
@@ -494,9 +593,19 @@ def _tabela_html(df_tab, cor_col=None, cor_fn=None, max_rows=50):
             cells.append(html.Td(val, style=style))
         rows.append(html.Tr(cells))
 
-    return html.Table(
-        [html.Thead(header), html.Tbody(rows)],
-        style={"width": "100%", "borderCollapse": "collapse"},
+    if linha_total is not None:
+        rows.append(html.Tr([
+            html.Td(_fmt(col, linha_total[col]), style={
+                "padding": "8px 14px", "fontSize": 12, "fontWeight": 700,
+                "textAlign": "left", "backgroundColor": "#EBF5FB",
+                "borderTop": "2px solid #2B6CB0", "color": "#1B3A5C",
+            }) for col in colunas
+        ]))
+
+    return html.Div(
+        html.Table([html.Thead(header), html.Tbody(rows)],
+                   style={"width": "100%", "borderCollapse": "collapse"}),
+        style={"overflowX": "auto"},
     )
 
 
@@ -533,7 +642,8 @@ def _aplicar_filtros_ies(regiao, uf, org, rede, ano=None):
     if rede and rede != "Todas":
         df = df[df["tp_rede"] == rede]
     return df
-    
+
+
 def _classificar_modalidade(valor):
     """Normaliza os rótulos do INEP para os dois filtros exibidos no painel."""
     modalidade = str(valor).strip().lower()
@@ -823,10 +933,15 @@ def _aba_mapa_layout():
 # ═══════════════════════════════════════════════════════════════════════════════
 # ABA 4 — VISÃO POR MUNICÍPIO (Reestruturada com foco em Faculdades, Cursos e Alunos)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# Estado padrão de ordenação da tabela de cursos da IES
+SORT_CURSOS_PADRAO = {"col": "Total de Matrículas", "asc": False}
+
+
 def _aba_municipio_layout():
     ufs_validas = sorted([u for u in df_cursos["sg_uf"].dropna().unique() if u != "Todas"])
     uf_inicial = ufs_validas[0] if ufs_validas else "SP"
-    
+
     return html.Div([
         # Task 3.2 — stores de estado
         dcc.Store(id="mun-ies-selecionada", data=None),
@@ -834,7 +949,7 @@ def _aba_municipio_layout():
         dcc.Store(id="mun-scroll-trigger", data=None),
         dcc.Store(id="mun-dados-tabela", data=None),   # cache dos dados processados
         dcc.Store(id="mun-pagina", data=0),             # página atual da tabela
-        dcc.Store(id="mun-cursos-sort-state", data={"col": "Matrículas", "asc": False}),
+        dcc.Store(id="mun-cursos-sort-state", data=SORT_CURSOS_PADRAO),
 
         # Filtros
         _card([
@@ -902,6 +1017,35 @@ app = dash.Dash(
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1.0"}],
 )
 server = app.server
+
+
+def _registrar_callback_download(chave):
+    @app.callback(
+        Output(f"edu-download-file-{chave}", "data"),
+        Input(f"edu-download-csv-{chave}", "n_clicks"),
+        Input(f"edu-download-xlsx-{chave}", "n_clicks"),
+        State(f"edu-download-data-{chave}", "data"),
+        prevent_initial_call=True,
+    )
+    def _exportar_tabela(n_csv, n_xlsx, payload):
+        if not payload or not payload.get("rows"):
+            return dash.no_update
+        df_export = pd.DataFrame(payload["rows"])
+        nome_base = os.path.splitext(payload.get("filename", "tabela"))[0]
+        acionado = callback_context.triggered[0]["prop_id"] if callback_context.triggered else ""
+        if f"edu-download-xlsx-{chave}" in acionado:
+            if not _HAS_OPENPYXL:
+                return dash.no_update
+            return dcc.send_bytes(
+                lambda buffer: df_export.to_excel(buffer, index=False),
+                f"{nome_base}.xlsx",
+            )
+        return dcc.send_data_frame(df_export.to_csv, f"{nome_base}.csv", index=False)
+
+
+for _chave_download in ("ofertas", "top-cursos", "ranking-uf", "municipio-ies"):
+    _registrar_callback_download(_chave_download)
+
 
 _original_layout = html.Div(
     className="app-shell",
@@ -1121,12 +1265,22 @@ def atualizar_ies_por_curso(curso, uf, municipio, ano):
     if df.empty:
         return _nota("Nenhuma IES encontrada para os filtros selecionados.", cor="#c53030")
 
+    df = df.assign(
+        _mat_presencial=df["qt_mat"].where(
+            df["tp_modalidade_ensino"].map(_classificar_modalidade) == "Presencial", 0),
+        _mat_ead=df["qt_mat"].where(
+            df["tp_modalidade_ensino"].map(_classificar_modalidade) == "EAD", 0),
+    )
     ofertas = (
         df.groupby(["co_ies", "sg_uf", "no_municipio"])
           .agg(
-              Modalidade=("tp_modalidade_ensino", lambda valores: ", ".join(sorted(set(valores.dropna().astype(str))))),
-              Rede=("tp_rede", lambda valores: ", ".join(sorted(set(valores.dropna().astype(str))))),
-              Matrículas=("qt_mat", "sum"),
+              Modalidade=("tp_modalidade_ensino", lambda v: ", ".join(sorted(set(v.dropna().astype(str))))),
+              Rede=("tp_rede", lambda v: ", ".join(sorted(set(v.dropna().astype(str))))),
+              **{"Total de Matrículas": ("qt_mat", "sum")},
+              Presencial=("_mat_presencial", "sum"),
+              EAD=("_mat_ead", "sum"),
+              Ingressantes=("qt_ing", "sum"),
+              Concluintes=("qt_conc", "sum"),
               Vagas=("qt_vg_total", "sum"),
           )
           .reset_index()
@@ -1138,14 +1292,15 @@ def atualizar_ies_por_curso(curso, uf, municipio, ano):
     ofertas = ofertas.merge(ies, on="co_ies", how="left")
     ofertas["IES"] = ofertas["no_ies"].fillna(ofertas["co_ies"].astype(str))
     ofertas = ofertas.rename(columns={"sg_uf": "UF", "no_municipio": "Município"})
-    ofertas["Matrículas"] = ofertas["Matrículas"].apply(_fmt_mil)
-    ofertas["Vagas"] = ofertas["Vagas"].apply(_fmt_mil)
-    ofertas = ofertas[["IES", "UF", "Município", "Modalidade", "Rede", "Matrículas", "Vagas"]]
+    ofertas = ofertas[["IES", "UF", "Município", "Modalidade", "Rede",
+                       "Total de Matrículas", "Presencial", "EAD",
+                       "Ingressantes", "Concluintes", "Vagas"]]
     ofertas = ofertas.sort_values(["UF", "Município", "IES"])
 
     return html.Div([
         _nota(f"{len(ofertas)} IES encontrada(s) para {curso}."),
-        _tabela_html(ofertas, max_rows=200),
+        _bloco_tabela_download(ofertas, "ofertas", "ofertas_curso",
+                               max_rows=200, coluna_rotulo="IES"),
     ])
 
 
@@ -1283,26 +1438,22 @@ def atualizar_tabela_cursos(ano, regiao, uf, modal, grau, rede, area):
     top = (
         df.groupby("no_curso")
           .agg(
-              Ingressantes=("qt_ing", "sum"),
-              Concluintes=("qt_conc", "sum"),
+              **{"Total de Matrículas": ("qt_mat", "sum")},
               Presencial=("_mat_presencial", "sum"),
               EAD=("_mat_ead", "sum"),
-              Matrículas=("qt_mat", "sum"),
+              Ingressantes=("qt_ing", "sum"),
+              Concluintes=("qt_conc", "sum"),
               **{"Nº Turmas/Ofertados": ("co_curso", "nunique")},
           )
           .reset_index()
           .rename(columns={"no_curso": "Nome do Curso"})
-          .sort_values(by="Matrículas", ascending=False)
-          .head(15)
+          .sort_values(by="Total de Matrículas", ascending=False)
     )
-
-    ordered = ["Nome do Curso", "Ingressantes", "Concluintes", "Presencial", "EAD", "Total de Matrículas", "Nº Turmas/Ofertados"]
-    top = top.rename(columns={"Matrículas": "Total de Matrículas"})
-    top = top[ordered]
-    for c in ordered[1:]:
-        top[c] = top[c].apply(_fmt_mil)
-
-    return _tabela_html(top)
+    return html.Div([
+        _nota("Exibindo os 15 maiores cursos; o total e o download consideram todos os cursos filtrados."),
+        _bloco_tabela_download(top, "top-cursos", "top_cursos", max_rows=15,
+                               coluna_rotulo="Nome do Curso"),
+    ])
 
 
 # ── Callback Mapa por UF ──────────────────────────────────────────────────────
@@ -1385,21 +1536,24 @@ def atualizar_mapa(indicador, ano, modal, rede, grau):
         plot_bgcolor="#ffffff",
     )
 
-    # Tabela Ranking
+    # Tabela Ranking (padrão: ordem fixa, TOTAL e download)
     rk = metricas_uf.sort_values(coluna_indicador, ascending=False).reset_index(drop=True)
-    rk.index += 1
-    rk.reset_index(inplace=True)
-    rk = rk.rename(columns={"index": "Posição", "sg_uf": "UF"})
-    rk = rk[["Posição", "UF", "Cursos", "IES", "Presencial", "EAD", "Total de Matrículas", "Ingressantes", "Concluintes", "Docentes (IES)"]]
-    for coluna in rk.columns[2:]:
-        rk[coluna] = rk[coluna].apply(_fmt_mil)
+    rk.insert(0, "Posição", (rk.index + 1).astype(str))   # texto, para não entrar no total
+    rk = rk.rename(columns={"sg_uf": "UF"})
+    rk = rk[["Posição", "UF", "Total de Matrículas", "Presencial", "EAD",
+             "Ingressantes", "Concluintes", "Cursos", "IES", "Docentes (IES)"]]
 
-    contexto = f"Filtros respondidos: Ano {ano} · Modalidade {modal} · Rede {rede} · Grau {grau}. Ranking ordenado por {indicador}."
-    return dcc.Graph(figure=fig_mapa), html.Div([_nota(contexto), _tabela_html(rk)])
+    contexto = (f"Filtros respondidos: Ano {ano} · Modalidade {modal} · Rede {rede} · "
+                f"Grau {grau}. Ranking ordenado por {indicador}.")
+    return dcc.Graph(figure=fig_mapa), html.Div([
+        _nota(contexto),
+        _bloco_tabela_download(rk, "ranking-uf", f"ranking_uf_{ano}",
+                               max_rows=60, coluna_rotulo="UF"),
+    ])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CALLBACKS DA ABA VISÃO POR MUNICÍPIO (Ajustados)
+# CALLBACKS DA ABA VISÃO POR MUNICÍPIO
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # 1. Atualizar lista de Municípios com base na UF selecionada
@@ -1465,7 +1619,6 @@ def capturar_clique_ies(n_clicks_list):
     if not ctx.triggered or not any(n_clicks_list):
         return dash.no_update
     trig_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    import json
     try:
         obj_id = json.loads(trig_id)
         return obj_id.get("co_ies")
@@ -1669,34 +1822,40 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
         return None, html.Div(), 0
 
     ano = int(ano)
-    filtro_mun_c = f"AND no_municipio = '{mun}'" if mun != "TODOS" else ""
-    filtro_mun_i = f"AND no_municipio_ies = '{mun}'" if mun != "TODOS" else ""
+    filtro_mun_c = f"AND no_municipio = {_sql_str(mun)}" if mun != "TODOS" else ""
+    filtro_mun_i = f"AND no_municipio_ies = {_sql_str(mun)}" if mun != "TODOS" else ""
 
+    # nu_ano_censo é varchar no Trino → CAST para comparar com inteiro
     df_c = _trino_query(f"""
         SELECT {_COLS_CURSOS_STR}
         FROM {TBL_CURSOS}
-        WHERE nu_ano_censo = {ano}
-          AND sg_uf = '{uf}'
+        WHERE CAST(nu_ano_censo AS INTEGER) = {ano}
+          AND sg_uf = {_sql_str(uf)}
           {filtro_mun_c}
     """)
     df_i = _trino_query(f"""
         SELECT {_COLS_IES_STR}
         FROM {TBL_IES}
-        WHERE nu_ano_censo = {ano}
-          AND sg_uf_ies = '{uf}'
+        WHERE CAST(nu_ano_censo AS INTEGER) = {ano}
+          AND sg_uf_ies = {_sql_str(uf)}
           {filtro_mun_i}
     """)
     for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest","qt_doc_ex_esp",
                 "qt_doc_ex_femi","qt_doc_ex_masc","qt_tec_total"]:
         if col in df_i.columns:
             df_i[col] = pd.to_numeric(df_i[col], errors="coerce").fillna(0)
-    
-        # O INEP usa rótulos como "A Distância" em alguns anos, não apenas "EAD".
-        # Filtrar após a leitura mantém o filtro compatível com todas as variações.
-        if modalidade and modalidade != "Todas":
-            df_c = df_c[df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == modalidade]
-            ies_com_cursos = set(df_c["co_ies"].astype(str))
-            df_i = df_i[df_i["co_ies"].astype(str).isin(ies_com_cursos)]
+
+    # Colunas numéricas de cursos vêm do Trino possivelmente como object
+    for col in ["qt_mat", "qt_ing", "qt_conc"]:
+        if col in df_c.columns:
+            df_c[col] = pd.to_numeric(df_c[col], errors="coerce").fillna(0)
+
+    # O INEP usa rótulos como "A Distância" em alguns anos, não apenas "EAD".
+    # Filtrar após a leitura mantém o filtro compatível com todas as variações.
+    if modalidade and modalidade != "Todas":
+        df_c = df_c[df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == modalidade]
+        ies_com_cursos = set(df_c["co_ies"].astype(str))
+        df_i = df_i[df_i["co_ies"].astype(str).isin(ies_com_cursos)]
 
     if categoria and categoria != "Todas":
         co_ies_cat = set(df_i[df_i["tp_categoria_administrativa"].apply(_decode_categoria) == categoria]["co_ies"].astype(str).tolist())
@@ -1711,9 +1870,16 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
     if df_c.empty and df_i.empty:
         return None, kpi_zero, 0
 
+    _mod = df_c["tp_modalidade_ensino"].map(_classificar_modalidade)
+    df_c = df_c.assign(
+        _mat_presencial=df_c["qt_mat"].where(_mod == "Presencial", 0),
+        _mat_ead=df_c["qt_mat"].where(_mod == "EAD", 0),
+    )
     ies_cursos = df_c.groupby("co_ies").agg(
         total_cursos=("no_curso", "nunique"),
         total_mat=("qt_mat", "sum"),
+        total_mat_presencial=("_mat_presencial", "sum"),
+        total_mat_ead=("_mat_ead", "sum"),
         total_ing=("qt_ing", "sum"),
         total_conc=("qt_conc", "sum"),
     ).reset_index()
@@ -1726,6 +1892,8 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
         sg_uf_sede=("sg_uf_ies", "first"),
     ).reset_index()
 
+    ies_cursos["co_ies"] = ies_cursos["co_ies"].astype(str)
+    ies_info_global["co_ies"] = ies_info_global["co_ies"].astype(str)
     tabela = pd.merge(ies_cursos, ies_info_global, on="co_ies", how="left")
     tabela["nome_ies"] = tabela["nome_ies"].fillna("IES " + tabela["co_ies"].astype(str))
     tabela["sigla_ies"] = tabela["sigla_ies"].fillna("")
@@ -1734,7 +1902,8 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
     )
     tabela["no_municipio_sede"] = tabela["no_municipio_sede"].fillna("-")
     tabela["sg_uf_sede"] = tabela["sg_uf_sede"].fillna("-")
-    for c in ["total_cursos", "total_mat", "total_ing", "total_conc"]:
+    for c in ["total_cursos", "total_mat", "total_mat_presencial", "total_mat_ead",
+              "total_ing", "total_conc"]:
         tabela[c] = tabela[c].fillna(0).astype(int)
 
     if not sort_state:
@@ -1758,6 +1927,17 @@ def carregar_dados_tabela(uf, mun, ano, categoria, modalidade, sort_state):
 #     Dispara quando: seleciona IES, muda página, ordena coluna
 PAGE_SIZE = 30
 
+# (chave interna, rótulo) — ordem padrão das colunas numéricas da Tabela de IES
+COLS_NUM_IES = [
+    ("total_mat", "Total de Matrículas"),
+    ("total_mat_presencial", "Presencial"),
+    ("total_mat_ead", "EAD"),
+    ("total_ing", "Ingressantes"),
+    ("total_conc", "Concluintes"),
+    ("total_cursos", "Cursos Únicos"),
+]
+
+
 @app.callback(
     Output("mun-tabela-ies-container", "children"),
     Output("mun-pag-info", "children"),
@@ -1776,97 +1956,164 @@ def renderizar_tabela_faculdades(dados, ies_selecionada_co, pagina, sort_state, 
 
     if not dados:
         return (html.P("Selecione um Estado e um Município nos filtros acima.",
-                       style={"color": "#718096"}),
-                "", _estilo_pag_oculto)
+                       style={"color": "#718096"}), "", _estilo_pag_oculto)
 
     tabela = pd.DataFrame(dados)
-    if not sort_state:
-        sort_state = {"col": "total_mat", "asc": False}
+    for chave, _ in COLS_NUM_IES:
+        if chave not in tabela.columns:
+            tabela[chave] = 0
+
+    sort_state = sort_state or {"col": "total_mat", "asc": False}
     sort_col = sort_state.get("col", "total_mat")
     sort_asc = sort_state.get("asc", False)
-
     if sort_col in tabela.columns:
-        tabela = tabela.sort_values(
-            by=sort_col,
-            ascending=sort_asc,
-            kind="mergesort",
-            na_position="last",
-        )
+        tabela = tabela.sort_values(by=sort_col, ascending=sort_asc,
+                                    kind="mergesort", na_position="last")
+
+    # ── Download (tabela completa, com TOTAL) ────────────────────────────────
+    df_exp = tabela.rename(columns={
+        "co_ies": "Cód. IES", "nome_ies": "Nome da Faculdade / IES", "sigla_ies": "Sigla",
+        "no_municipio_sede": "Município Sede", "sg_uf_sede": "UF Sede", "categoria": "Categoria",
+        **{k: v for k, v in COLS_NUM_IES},
+    })
+    df_exp["Cód. IES"] = df_exp["Cód. IES"].astype(str)
+    df_exp = df_exp[["Cód. IES", "Nome da Faculdade / IES", "Sigla", "Município Sede",
+                     "UF Sede", "Categoria"] + [v for _, v in COLS_NUM_IES]]
+    df_exp_total = _adicionar_total(df_exp, "Nome da Faculdade / IES")
 
     pagina = pagina or 0
     total = len(tabela)
     total_paginas = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     fatia = tabela.iloc[pagina * PAGE_SIZE : (pagina + 1) * PAGE_SIZE]
 
-    def _th_sort(label, col_key, align="right"):
+    def _th_sort(label, col_key):
         arrow = " ↑" if sort_col == col_key and sort_asc else " ↓" if sort_col == col_key else " ↕"
         return html.Th(
             label + arrow,
             id={"type": "th-sort-ies", "col": col_key},
             n_clicks=0,
             title="Clique para ordenar; clique novamente para inverter a ordem",
-            style={
-                "padding": "10px", "textAlign": align, "fontSize": 11,
-                "borderBottom": "2px solid #e2e8f0",
-                "cursor": "pointer", "userSelect": "none",
-                "color": COR_AZUL if sort_col == col_key else "#4a5568",
-            },
+            style={"padding": "10px", "textAlign": "left", "fontSize": 11,
+                   "borderBottom": "2px solid #e2e8f0", "cursor": "pointer",
+                   "userSelect": "none",
+                   "color": COR_AZUL if sort_col == col_key else "#4a5568"},
         )
 
-    header = html.Tr([
-        html.Th("Ação",    style={"padding": "10px", "textAlign": "center", "fontSize": 11, "borderBottom": "2px solid #e2e8f0"}),
-        _th_sort("Cód. IES", "co_ies", align="left"),
-        _th_sort("Nome da Faculdade / IES", "nome_ies", align="left"),
-        _th_sort("Sede", "no_municipio_sede", align="left"),
-        _th_sort("Categoria", "categoria", align="left"),
-        _th_sort("Cursos Únicos", "total_cursos"),
-        _th_sort("Matrículas",    "total_mat"),
-        _th_sort("Ingressantes",  "total_ing"),
-        _th_sort("Concluintes",   "total_conc"),
-    ])
+    header = html.Tr(
+        [html.Th("Ação", style={"padding": "10px", "textAlign": "left", "fontSize": 11,
+                                "borderBottom": "2px solid #e2e8f0"}),
+         _th_sort("Cód. IES", "co_ies"),
+         _th_sort("Nome da Faculdade / IES", "nome_ies"),
+         _th_sort("Sede", "no_municipio_sede"),
+         _th_sort("Categoria", "categoria")]
+        + [_th_sort(rotulo, chave) for chave, rotulo in COLS_NUM_IES]
+    )
+
+    def _td(v, bg, **extra):
+        return html.Td(v, style={"padding": "8px", "fontSize": 12, "textAlign": "left",
+                                 "borderBottom": "1px solid #f0f0f0",
+                                 "backgroundColor": bg, **extra})
 
     rows = []
     for _, r in fatia.iterrows():
         co_ies_val = str(r["co_ies"])
         is_selected = (str(ies_selecionada_co) == co_ies_val)
         bg = "#ebf8ff" if is_selected else "#ffffff"
-        btn_text = "✓ Selecionada" if is_selected else "Ver Cursos e Alunos"
         btn = html.Button(
-            btn_text,
-            id={"type": "btn-sel-ies", "co_ies": co_ies_val},
-            n_clicks=0,
-            style={
-                "backgroundColor": COR_VERDE if is_selected else COR_AZUL,
-                "color": "#fff", "border": "none", "borderRadius": 4,
-                "padding": "6px 12px", "fontSize": 11, "fontWeight": 600, "cursor": "pointer",
-            },
+            "✓ Selecionada" if is_selected else "Ver Cursos e Alunos",
+            id={"type": "btn-sel-ies", "co_ies": co_ies_val}, n_clicks=0,
+            style={"backgroundColor": COR_VERDE if is_selected else COR_AZUL,
+                   "color": "#fff", "border": "none", "borderRadius": 4,
+                   "padding": "6px 12px", "fontSize": 11, "fontWeight": 600, "cursor": "pointer"},
         )
-        sigla_str = f" ({r['sigla_ies']})" if r.get('sigla_ies') and str(r['sigla_ies']) not in ("nan", "-", "") else ""
+        sigla_str = (f" ({r['sigla_ies']})"
+                     if r.get("sigla_ies") and str(r["sigla_ies"]) not in ("nan", "-", "") else "")
         sede_str = f"{r.get('no_municipio_sede', '-')} / {r.get('sg_uf_sede', '-')}"
         if mun == "TODOS":
-            if str(r.get('sg_uf_sede', uf)) != uf:
+            if str(r.get("sg_uf_sede", uf)) != uf:
                 sede_str += " ★"
-        else:
-            if str(r.get('sg_uf_sede', uf)) != uf or str(r.get('no_municipio_sede', mun)) != mun:
-                sede_str += " ★"
+        elif str(r.get("sg_uf_sede", uf)) != uf or str(r.get("no_municipio_sede", mun)) != mun:
+            sede_str += " ★"
 
-        rows.append(html.Tr([
-            html.Td(btn, style={"padding": "8px", "textAlign": "center", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(co_ies_val, style={"padding": "8px", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(f"{r['nome_ies']}{sigla_str}", style={"padding": "8px", "fontSize": 12, "fontWeight": 600, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(sede_str, style={"padding": "8px", "fontSize": 11, "color": "#718096", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(r["categoria"], style={"padding": "8px", "fontSize": 12, "color": "#4a5568", "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(_fmt_mil(r["total_cursos"]), style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(_fmt_mil(r["total_mat"]),    style={"padding": "8px", "textAlign": "right", "fontSize": 12, "fontWeight": 700, "color": COR_AZUL, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(_fmt_mil(r["total_ing"]),    style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-            html.Td(_fmt_mil(r["total_conc"]),   style={"padding": "8px", "textAlign": "right", "fontSize": 12, "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}),
-        ]))
+        celulas = [
+            _td(btn, bg),
+            _td(co_ies_val, bg),
+            _td(f"{r['nome_ies']}{sigla_str}", bg, fontWeight=600),
+            _td(sede_str, bg, fontSize=11, color="#718096"),
+            _td(r["categoria"], bg, color="#4a5568"),
+        ]
+        for chave, _ in COLS_NUM_IES:
+            destaque = {"fontWeight": 700, "color": COR_AZUL} if chave == "total_mat" else {}
+            celulas.append(_td(_fmt_mil(r[chave]), bg, **destaque))
+        rows.append(html.Tr(celulas))
+
+    # ── Linha TOTAL (considera todas as IES filtradas, não só a página) ──────
+    est_total = {"padding": "8px", "fontSize": 12, "fontWeight": 700, "textAlign": "left",
+                 "backgroundColor": "#EBF5FB", "borderTop": "2px solid #2B6CB0",
+                 "color": "#1B3A5C"}
+    rows.append(html.Tr(
+        [html.Td("", style=est_total), html.Td("", style=est_total),
+         html.Td("TOTAL", style=est_total), html.Td("", style=est_total),
+         html.Td("", style=est_total)]
+        + [html.Td(_fmt_mil(tabela[chave].sum()), style=est_total) for chave, _ in COLS_NUM_IES]
+    ))
 
     pag_info = f"Página {pagina + 1} de {total_paginas}  ({total} IES)"
-    tabela_html = html.Table([html.Thead(header), html.Tbody(rows)],
-                             style={"width": "100%", "borderCollapse": "collapse"})
+    conteudo = html.Div([
+        _controles_download(df_exp_total, "municipio-ies", "instituicoes_municipio"),
+        html.Div(
+            html.Table([html.Thead(header), html.Tbody(rows)],
+                       style={"width": "100%", "borderCollapse": "collapse"}),
+            style={"overflowX": "auto"},
+        ),
+    ])
+    return conteudo, pag_info, _estilo_pag_visivel
 
-    return tabela_html, pag_info, _estilo_pag_visivel
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TABELA DE CURSOS DA IES SELECIONADA — definição única de colunas/ordem
+# ═══════════════════════════════════════════════════════════════════════════════
+_TEXT_COLS_CURSOS = ["Curso", "Modalidade", "Grau", "Área"]
+_NUM_COLS_CURSOS = [
+    "Total de Matrículas", "Mat. Presencial", "Mat. EAD",
+    "Ingressantes", "Concluintes",
+    "Matrículas Femininas", "Matrículas Masculinas",
+    "ENEM", "Outras formas",
+    "FIES", "ProUni Integral", "ProUni Parcial", "PCD",
+]
+
+
+def _agrupar_cursos(df_c):
+    """Agrupa por nome+modalidade+grau+área (consolida autorizações múltiplas).
+    A ordem das colunas segue _NUM_COLS_CURSOS."""
+    _mod = df_c["tp_modalidade_ensino"].map(_classificar_modalidade)
+    df_c = df_c.assign(
+        _outras_formas=(df_c["qt_ing"] - df_c["qt_ing_enem"]).clip(lower=0),
+        _mat_presencial=df_c["qt_mat"].where(_mod == "Presencial", 0),
+        _mat_ead=df_c["qt_mat"].where(_mod == "EAD", 0),
+    )
+    df_tab = (
+        df_c.groupby(["no_curso", "tp_modalidade_ensino", "tp_grau_academico",
+                      "no_cine_area_geral"], dropna=False)
+        .agg(
+            c1=("qt_mat", "sum"),
+            c2=("_mat_presencial", "sum"),
+            c3=("_mat_ead", "sum"),
+            c4=("qt_ing", "sum"),
+            c5=("qt_conc", "sum"),
+            c6=("qt_mat_fem", "sum"),
+            c7=("qt_mat_masc", "sum"),
+            c8=("qt_ing_enem", "sum"),
+            c9=("_outras_formas", "sum"),
+            c10=("qt_mat_fies", "sum"),
+            c11=("qt_mat_prounii", "sum"),
+            c12=("qt_mat_prounip", "sum"),
+            c13=("qt_mat_deficiente", "sum"),
+        )
+        .reset_index()
+    )
+    df_tab.columns = _TEXT_COLS_CURSOS + _NUM_COLS_CURSOS
+    return df_tab.sort_values("Total de Matrículas", ascending=False)
 
 
 # 5. Renderizar o Painel Detalhado de Cursos e Alunos da Faculdade Selecionada
@@ -1889,25 +2136,30 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     ano = int(ano)
 
     # ── Query direta ao Trino — filtra por IES/ano/município ──────────────────
-    filtro_mun = f"AND no_municipio = '{mun}'" if mun and mun != "TODOS" else ""
+    filtro_mun = f"AND no_municipio = {_sql_str(mun)}" if mun and mun != "TODOS" else ""
+    # CAST nos dois lados evita TYPE_MISMATCH independentemente de a coluna ser varchar ou inteiro
     df_c = _trino_query(f"""
         SELECT {_COLS_CURSOS_STR}
         FROM {TBL_CURSOS}
-        WHERE nu_ano_censo = {ano}
-          AND co_ies = {co_ies}
-          AND sg_uf = '{uf}'
+        WHERE CAST(nu_ano_censo AS INTEGER) = {ano}
+          AND CAST(co_ies AS VARCHAR) = {_sql_str(co_ies)}
+          AND sg_uf = {_sql_str(uf)}
           {filtro_mun}
     """)
     df_i = _trino_query(f"""
         SELECT {_COLS_IES_STR}
         FROM {TBL_IES}
-        WHERE nu_ano_censo = {ano}
-          AND co_ies = {co_ies}
+        WHERE CAST(nu_ano_censo AS INTEGER) = {ano}
+          AND CAST(co_ies AS VARCHAR) = {_sql_str(co_ies)}
     """)
     for col in ["qt_doc_total","qt_doc_exe","qt_doc_ex_dout","qt_doc_ex_mest","qt_doc_ex_esp",
                 "qt_doc_ex_femi","qt_doc_ex_masc","qt_tec_total"]:
         if col in df_i.columns:
             df_i[col] = pd.to_numeric(df_i[col], errors="coerce").fillna(0)
+    # Garante numérico nas colunas de cursos vindas do Trino
+    for col in [c for c in COLS_CURSOS if c.startswith("qt_")]:
+        if col in df_c.columns:
+            df_c[col] = pd.to_numeric(df_c[col], errors="coerce").fillna(0)
 
     nome_ies = df_i["no_ies"].iloc[0] if not df_i.empty else (df_c["co_ies"].iloc[0] if not df_c.empty else co_ies)
     sigla = f" ({df_i['sg_ies'].iloc[0]})" if not df_i.empty and pd.notna(df_i['sg_ies'].iloc[0]) else ""
@@ -1918,14 +2170,6 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     mat_total = int(df_c["qt_mat"].sum())
     ing_total = int(df_c["qt_ing"].sum())
     conc_total = int(df_c["qt_conc"].sum())
-
-    def _classificar_modalidade(valor):
-        modalidade = str(valor).strip().lower()
-        if "ead" in modalidade or "dist" in modalidade:
-            return "EAD"
-        if "pres" in modalidade:
-            return "Presencial"
-        return None
 
     def _totais_por_modalidade(coluna):
         modalidades = df_c["tp_modalidade_ensino"].map(_classificar_modalidade)
@@ -1953,80 +2197,25 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
     # Graduados = em exercício - (doutores + mestres + especialistas)
     doc_grad = max(0, doc_exe - doc_dout - doc_mest - doc_esp)
 
-    # ── Task 9.1: KPIs de financiamento — soma direta de df_c ANTES do groupby
-    # Garante que os valores no card "Perfil dos Alunos" sempre coincidam com a soma
-    # da coluna correspondente na Tabela_Cursos (ambos partem de df_c sem deduplicação).
+    # ── KPIs de financiamento — soma direta de df_c ANTES do groupby
     fies   = int(df_c["qt_mat_fies"].sum())
     prouni = int(df_c["qt_mat_prounii"].sum() + df_c["qt_mat_prounip"].sum())
-    enem   = int(df_c["qt_ing_enem"].sum())
     acesso_totais = {
         nome: int(df_c[coluna].sum())
         for nome, coluna in ACESSO_INGRESSO.items()
     }
     acesso_detalhado = sum(acesso_totais.values())
-    diferenca_acesso = ing_total - acesso_detalhado
 
-    # Tabela de Cursos — agrupa por nome+modalidade+grau para consolidar autorizações múltiplas
-    _NUMERIC_COLS = [
-        "Matrículas", "Ingressantes", "Concluintes", "Matrículas Masculinas", "Matrículas Femininas",
-        "ENEM", "Outras formas", "FIES", "ProUni Integral", "ProUni Parcial",
-        "Mat. Presencial", "Mat. EAD", "PCD",
-    ]
-    _TEXT_COLS    = ["Curso", "Modalidade", "Grau", "Área"]
-
-    df_c = df_c.assign(
-        _modalidade_resumo=df_c["tp_modalidade_ensino"].map(_classificar_modalidade),
-        _outras_formas=(df_c["qt_ing"] - df_c["qt_ing_enem"]).clip(lower=0),
-        _mat_presencial=df_c["qt_mat"].where(
-            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "Presencial", 0
-        ),
-        _mat_ead=df_c["qt_mat"].where(
-            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "EAD", 0
-        ),
-    )
-    df_cursos_tab = (
-        df_c.groupby(["no_curso", "tp_modalidade_ensino", "tp_grau_academico",
-                      "no_cine_area_geral"], dropna=False)
-        .agg(
-            Matrículas=("qt_mat", "sum"),
-            Ingressantes=("qt_ing", "sum"),
-            Concluintes=("qt_conc", "sum"),
-            **{"Matrículas Masculinas": ("qt_mat_masc", "sum")},
-            **{"Matrículas Femininas": ("qt_mat_fem", "sum")},
-            ENEM=("qt_ing_enem", "sum"),
-            Outras_Formas=("_outras_formas", "sum"),
-            FIES=("qt_mat_fies", "sum"),
-            ProUni_Integral=("qt_mat_prounii", "sum"),
-            ProUni_Parcial=("qt_mat_prounip", "sum"),
-            Mat_Presencial=("_mat_presencial", "sum"),
-            Mat_EAD=("_mat_ead", "sum"),
-            PCD=("qt_mat_deficiente", "sum"),
-        )
-        .reset_index()
-        .sort_values("Matrículas", ascending=False)
-    )
-    df_cursos_tab.columns = _TEXT_COLS + _NUMERIC_COLS
-
-    # ── Opções para os filtros de cursos (Task 11.1) — derivadas de df_cursos_tab antes da formatação
+    # Tabela de Cursos — definição única de colunas (ordem padrão)
+    df_cursos_tab = _agrupar_cursos(df_c)
     _modalidades_ies = ["Todas"] + sorted(df_cursos_tab["Modalidade"].dropna().unique().tolist())
     _graus_ies       = ["Todos"] + sorted(df_cursos_tab["Grau"].dropna().unique().tolist())
     _areas_ies       = ["Todas"] + sorted(df_cursos_tab["Área"].dropna().unique().tolist())
     _n_cursos_tab    = len(df_cursos_tab)
-
-    # ── Task 9.2: Linha de totais (valores numéricos, antes da formatação _fmt_mil)
-    total_row = {col: df_cursos_tab[col].sum() for col in _NUMERIC_COLS}
-    total_row.update({col: "—" for col in ["Modalidade", "Grau", "Área"]})
-    total_row["Curso"] = "TOTAL"
-
-    # Renderizar tabela inicial (sem filtros) — mostrada ao abrir o painel
-    _tabela_inicial = _render_cursos_table(df_cursos_tab.copy(), _TEXT_COLS, _NUMERIC_COLS)
-
-    # Formatar valores numéricos para exibição (tabela inicial — sem filtros ativos)
-    for col in _NUMERIC_COLS:
-        df_cursos_tab[col] = df_cursos_tab[col].apply(_fmt_mil)
+    _tabela_inicial  = _render_cursos_table(df_cursos_tab.copy(), _TEXT_COLS_CURSOS, _NUM_COLS_CURSOS)
 
     return html.Div([
-        # ── dcc.Download para exportação (Task 11.1 / Task 12) ───────────────
+        # ── dcc.Download para exportação ─────────────────────────────────────
         dcc.Download(id="mun-download"),
 
         # Header da Faculdade Selecionada
@@ -2114,7 +2303,7 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
             _titulo(f"Cursos Ofertados — {_n_cursos_tab} cursos (agrupados por nome/modalidade/grau)"),
             _nota("Cursos com mesmo nome mas autorizações distintas foram consolidados."),
 
-            # ── Task 11.1: Filtros de cursos ──────────────────────────────
+            # ── Filtros de cursos ─────────────────────────────────────────
             html.Div([
                 html.Div([
                     html.Label("Buscar curso", style={"fontSize": 11, "fontWeight": 600,
@@ -2142,29 +2331,23 @@ def renderizar_detalhes_ies(co_ies, uf, mun, ano):
             ], style={"display": "flex", "gap": 12, "flexWrap": "wrap",
                       "alignItems": "flex-end", "marginTop": 10, "marginBottom": 12}),
 
-            # ── Task 11.1: Placeholder atualizado pelo callback filtrar_tabela_cursos ──
+            # ── Placeholder atualizado pelo callback filtrar_tabela_cursos ──
             html.Div(_tabela_inicial, id="mun-tabela-cursos-container"),
         ], shadow=True)
     ])
 
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
-# CALLBACKS — FILTROS E EXPORTAÇÃO DA TABELA DE CURSOS (Tasks 11.2, 12)
+# CALLBACKS — FILTROS E EXPORTAÇÃO DA TABELA DE CURSOS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _build_cursos_tab(co_ies, uf, mun, ano):
     """Reconstrói o DataFrame de cursos agrupado (antes da formatação) para a
     IES selecionada, aplicando os mesmos filtros de renderizar_detalhes_ies()."""
-    _NUMERIC_COLS = [
-        "Matrículas", "Ingressantes", "Concluintes", "Matrículas Masculinas", "Matrículas Femininas",
-        "ENEM", "Outras formas", "FIES", "ProUni Integral", "ProUni Parcial",
-        "Mat. Presencial", "Mat. EAD", "PCD",
-    ]
-    _TEXT_COLS    = ["Curso", "Modalidade", "Grau", "Área"]
+    vazio = pd.DataFrame(columns=_TEXT_COLS_CURSOS + _NUM_COLS_CURSOS)
 
     if not co_ies or not uf:
-        return pd.DataFrame(columns=_TEXT_COLS + _NUMERIC_COLS), _TEXT_COLS, _NUMERIC_COLS
+        return vazio, _TEXT_COLS_CURSOS, _NUM_COLS_CURSOS
 
     _ano = int(ano) if ano else ANO_CENSO
 
@@ -2183,158 +2366,82 @@ def _build_cursos_tab(co_ies, uf, mun, ano):
         ]
 
     if df_c.empty:
-        return pd.DataFrame(columns=_TEXT_COLS + _NUMERIC_COLS), _TEXT_COLS, _NUMERIC_COLS
-
-    df_c = df_c.assign(
-        _outras_formas=(df_c["qt_ing"] - df_c["qt_ing_enem"]).clip(lower=0),
-        _mat_presencial=df_c["qt_mat"].where(
-            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "Presencial", 0
-        ),
-        _mat_ead=df_c["qt_mat"].where(
-            df_c["tp_modalidade_ensino"].map(_classificar_modalidade) == "EAD", 0
-        ),
-    )
-    df_tab = (
-        df_c.groupby(
-            ["no_curso", "tp_modalidade_ensino", "tp_grau_academico", "no_cine_area_geral"],
-            dropna=False,
-        )
-        .agg(
-            Matrículas=("qt_mat", "sum"),
-            Ingressantes=("qt_ing", "sum"),
-            Concluintes=("qt_conc", "sum"),
-            **{"Matrículas Masculinas": ("qt_mat_masc", "sum")},
-            **{"Matrículas Femininas": ("qt_mat_fem", "sum")},
-            ENEM=("qt_ing_enem", "sum"),
-            Outras_Formas=("_outras_formas", "sum"),
-            FIES=("qt_mat_fies", "sum"),
-            ProUni_Integral=("qt_mat_prounii", "sum"),
-            ProUni_Parcial=("qt_mat_prounip", "sum"),
-            Mat_Presencial=("_mat_presencial", "sum"),
-            Mat_EAD=("_mat_ead", "sum"),
-            PCD=("qt_mat_deficiente", "sum"),
-        )
-        .reset_index()
-        .sort_values("Matrículas", ascending=False)
-    )
-    df_tab.columns = _TEXT_COLS + _NUMERIC_COLS
-    return df_tab, _TEXT_COLS, _NUMERIC_COLS
+        return vazio, _TEXT_COLS_CURSOS, _NUM_COLS_CURSOS
+    return _agrupar_cursos(df_c), _TEXT_COLS_CURSOS, _NUM_COLS_CURSOS
 
 
 def _render_cursos_table(df_tab, _TEXT_COLS, _NUMERIC_COLS, sort_state=None):
-    """Renderiza a tabela de cursos com coluna '#', scroll e linha de totais."""
+    """Tabela de cursos: números à esquerda, TOTAL no rodapé, cabeçalho ordenável."""
     if df_tab.empty:
-        return html.P(
-            "Nenhum curso encontrado para os filtros selecionados.",
-            style={"color": "#718096", "fontStyle": "italic", "margin": "12px 0"},
-        )
+        return html.P("Nenhum curso encontrado para os filtros selecionados.",
+                      style={"color": "#718096", "fontStyle": "italic", "margin": "12px 0"})
 
-    sort_state = sort_state or {"col": "Matrículas", "asc": False}
-    sort_col = sort_state.get("col", "Matrículas")
-    sort_col = {
-        "Mat. Fem.": "Matrículas Femininas",
-        "Mat. Masc.": "Matrículas Masculinas",
-    }.get(sort_col, sort_col)
+    sort_state = sort_state or SORT_CURSOS_PADRAO
+    sort_col = sort_state.get("col", "Total de Matrículas")
     sort_asc = sort_state.get("asc", False)
     if sort_col in df_tab.columns:
-        if sort_col in _NUMERIC_COLS:
-            df_tab[sort_col] = pd.to_numeric(df_tab[sort_col], errors="coerce").fillna(0)
-        df_tab = df_tab.sort_values(
-            by=sort_col,
-            ascending=sort_asc,
-            kind="mergesort",
-            na_position="last",
-        )
+        df_tab = df_tab.sort_values(by=sort_col, ascending=sort_asc,
+                                    kind="mergesort", na_position="last")
 
     total_row = {col: df_tab[col].sum() for col in _NUMERIC_COLS}
-    total_row.update({col: "—" for col in ["Modalidade", "Grau", "Área"]})
-    total_row["Curso"] = "TOTAL"
-
-    # Formatar numéricos para exibição
-    df_fmt = df_tab.copy()
-    for col in _NUMERIC_COLS:
-        df_fmt[col] = df_fmt[col].apply(_fmt_mil)
 
     _all_cols = ["#"] + _TEXT_COLS + _NUMERIC_COLS
     _th_style = {
         "padding": "10px 12px", "textAlign": "left", "fontSize": 11,
-        "fontWeight": 600, "color": "#4a5568",
-        "borderBottom": "2px solid #e2e8f0",
-        "textTransform": "uppercase", "letterSpacing": "0.03em",
-        "whiteSpace": "nowrap", "position": "sticky", "top": 0,
-        "backgroundColor": "#ffffff", "zIndex": 1,
+        "fontWeight": 600, "color": "#4a5568", "borderBottom": "2px solid #e2e8f0",
+        "textTransform": "uppercase", "letterSpacing": "0.03em", "whiteSpace": "nowrap",
+        "position": "sticky", "top": 0, "backgroundColor": "#ffffff", "zIndex": 1,
     }
-    _th_right = {**_th_style, "textAlign": "right"}
 
     def _sort_header(col):
-        is_active = sort_col == col
-        indicator = "▲" if is_active and sort_asc else "▼" if is_active else "↕"
+        ativo = sort_col == col
+        ind = "▲" if ativo and sort_asc else "▼" if ativo else "↕"
         return html.Th(
-            html.Div([
-                html.Span(col),
-                html.Span(indicator, style={
-                    "fontSize": 10,
-                    "color": COR_AZUL if is_active else "#a0aec0",
-                    "marginLeft": 6,
-                    "lineHeight": 1,
-                }),
-            ], style={
-                "display": "inline-flex",
-                "alignItems": "center",
-                "justifyContent": "space-between",
-                "width": "100%",
-            }),
-            id={"type": "th-sort-cursos", "col": col},
-            n_clicks=0,
+            html.Div([html.Span(col),
+                      html.Span(ind, style={"fontSize": 10, "marginLeft": 6,
+                                            "color": COR_AZUL if ativo else "#a0aec0"})],
+                     style={"display": "inline-flex", "alignItems": "center"}),
+            id={"type": "th-sort-cursos", "col": col}, n_clicks=0,
             title="Clique para ordenar; clique novamente para inverter a ordem",
-            style={
-                **(_th_right if col in _NUMERIC_COLS else _th_style),
-                "cursor": "pointer",
-                "userSelect": "none",
-                "color": COR_AZUL if is_active else "#4a5568",
-            },
+            style={**_th_style, "cursor": "pointer", "userSelect": "none",
+                   "color": COR_AZUL if ativo else "#4a5568"},
         )
 
-    header_cells = [
-        html.Th(col, style=_th_right if col in _NUMERIC_COLS else _th_style)
-        if col == "#" else _sort_header(col)
+    table_header = html.Tr([
+        html.Th("#", style=_th_style) if col == "#" else _sort_header(col)
         for col in _all_cols
-    ]
-    table_header = html.Tr(header_cells)
+    ])
 
     data_rows = []
-    for i, (_, row) in enumerate(df_fmt.iterrows(), start=1):
+    for i, (_, row) in enumerate(df_tab.iterrows(), start=1):
         bg = "#fafafa" if i % 2 == 0 else "#ffffff"
-        _td_base = {"padding": "7px 12px", "fontSize": 12,
-                    "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}
-        cells = [html.Td(str(i), style={**_td_base, "color": "#a0aec0", "fontWeight": 600})]
+        base = {"padding": "7px 12px", "fontSize": 12, "textAlign": "left",
+                "borderBottom": "1px solid #f0f0f0", "backgroundColor": bg}
+        cells = [html.Td(str(i), style={**base, "color": "#a0aec0", "fontWeight": 600})]
         for col in _TEXT_COLS + _NUMERIC_COLS:
-            align = "right" if col in _NUMERIC_COLS else "left"
-            fw = 700 if col == "Matrículas" else "normal"
-            color = COR_AZUL if col == "Matrículas" else "#2d3748"
-            cells.append(html.Td(
-                row[col],
-                style={**_td_base, "textAlign": align, "fontWeight": fw, "color": color},
-            ))
+            val = _fmt_mil(row[col]) if col in _NUMERIC_COLS else row[col]
+            destaque = col == "Total de Matrículas"
+            cells.append(html.Td(val, style={
+                **base, "fontWeight": 700 if destaque else "normal",
+                "color": COR_AZUL if destaque else "#2d3748"}))
         data_rows.append(html.Tr(cells))
 
-    _td_total = {
-        "padding": "8px 12px", "fontSize": 12, "fontWeight": 700,
-        "backgroundColor": "#EBF5FB", "borderTop": "2px solid #2B6CB0",
-        "borderBottom": "none",
-    }
-    total_cells = [html.Td("∑", style={**_td_total, "color": "#2B6CB0"})]
+    td_total = {"padding": "8px 12px", "fontSize": 12, "fontWeight": 700, "textAlign": "left",
+                "backgroundColor": "#EBF5FB", "borderTop": "2px solid #2B6CB0",
+                "borderBottom": "none"}
+    total_cells = [html.Td("∑", style={**td_total, "color": "#2B6CB0"})]
     for col in _TEXT_COLS + _NUMERIC_COLS:
-        align = "right" if col in _NUMERIC_COLS else "left"
-        val = _fmt_mil(total_row[col]) if col in _NUMERIC_COLS else total_row[col]
-        total_cells.append(html.Td(val, style={**_td_total, "textAlign": align}))
-    total_tr = html.Tr(total_cells)
+        if col == "Curso":
+            val = "TOTAL"
+        elif col in _NUMERIC_COLS:
+            val = _fmt_mil(total_row[col])
+        else:
+            val = "—"
+        total_cells.append(html.Td(val, style=td_total))
 
     return html.Div(
-        html.Table(
-            [html.Thead(table_header), html.Tbody(data_rows + [total_tr])],
-            style={"width": "100%", "borderCollapse": "collapse"},
-        ),
+        html.Table([html.Thead(table_header), html.Tbody(data_rows + [html.Tr(total_cells)])],
+                   style={"width": "100%", "borderCollapse": "collapse"}),
         style={"overflowX": "auto", "overflowY": "auto", "maxHeight": "600px"},
     )
 
@@ -2364,7 +2471,7 @@ def _apply_course_filters(df_tab, busca, modal, grau, area, _TEXT_COLS, _NUMERIC
 def atualizar_sort_state_cursos(ies_selecionada, n_clicks_list, sort_state):
     ctx = callback_context
     if ctx.triggered and ctx.triggered[0]["prop_id"].startswith("mun-ies-selecionada"):
-        return {"col": "Matrículas", "asc": False}
+        return SORT_CURSOS_PADRAO
     if not ctx.triggered or not any(n for n in n_clicks_list if n):
         return dash.no_update
 
@@ -2375,17 +2482,13 @@ def atualizar_sort_state_cursos(ies_selecionada, n_clicks_list, sort_state):
 
     if not clicked_col:
         return dash.no_update
-    clicked_col = {
-        "Mat. Fem.": "Matrículas Femininas",
-        "Mat. Masc.": "Matrículas Masculinas",
-    }.get(clicked_col, clicked_col)
-    sort_state = sort_state or {"col": "Matrículas", "asc": False}
+    sort_state = sort_state or SORT_CURSOS_PADRAO
     if sort_state.get("col") == clicked_col:
         return {"col": clicked_col, "asc": not sort_state.get("asc", False)}
     return {"col": clicked_col, "asc": True}
 
 
-# ── Task 11.2: Callback — filtragem reativa da Tabela_Cursos ─────────────────
+# ── Callback — filtragem reativa da Tabela_Cursos ────────────────────────────
 @app.callback(
     Output("mun-tabela-cursos-container", "children"),
     Input("mun-curso-busca",  "value"),
@@ -2410,7 +2513,7 @@ def filtrar_tabela_cursos(busca, modal, grau, area, co_ies, uf, mun, ano, sort_s
     return _render_cursos_table(df_filtered, _TEXT_COLS, _NUMERIC_COLS, sort_state)
 
 
-# ── Task 11.2 / Task 12: Callback — exportação CSV / Excel da Tabela_Cursos ──
+# ── Callback — exportação CSV / Excel da Tabela_Cursos (com linha TOTAL) ─────
 @app.callback(
     Output("mun-download", "data"),
     Input("mun-btn-export-csv",  "n_clicks"),
@@ -2438,6 +2541,9 @@ def exportar_cursos(n_csv, n_xlsx, co_ies, uf, mun, ano, busca, modal, grau, are
 
     if df_export.empty:
         return dash.no_update
+
+    # Padrão: toda exportação leva a linha TOTAL
+    df_export = _adicionar_total(df_export, "Curso")
 
     # Obter sigla da IES para o nome do arquivo
     _ano_int = int(ano) if ano else ANO_CENSO
@@ -2478,7 +2584,6 @@ app.clientside_callback(
     prevent_initial_call=True,
 )
 
-#teste teste
 
 # ── Execução do Servidor ──────────────────────────────────────────────────────
 if __name__ == "__main__":
